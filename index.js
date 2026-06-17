@@ -486,25 +486,30 @@ async function handleGroupCommand(text, cfg, mentioned, senderPhone, isFromMe) {
     await reply("Komendy 🏐\nDla wszystkich:\n• bot status — liczba graczy\n• bot frekwencja — frekwencja i trend\n• bot ranking — obecność graczy\n• bot statystyki @osoba — statystyki gracza\n• bot motywacja — motywacja od bota\nTylko admini 🛡️:\n• bot ankieta piątek 20:00 — nowa ankieta\n• bot zmień dzień/godzinę — zmiana terminu\n• bot mvp — głosowanie MVP\n• bot rozlicz — podziel koszt sali\n• bot przypomnij — przypomnij teraz\n• bot nie gramy / cofnij odwołanie");
     return;
   }
-  if (low.startsWith("admin") || low.startsWith("unadmin")) {
+  if (low.startsWith("admin")) {
     if (!isFromMe) { await sock.sendMessage(cfg.groupJid, { text: "⛔ Tylko właściciel może zarządzać adminami." }); return; }
     cfg.admins = cfg.admins || [];
     const c = loadContacts();
-    if (low.includes("lista") || low.includes("list")) {
-      const names = cfg.admins.map(p => c[p] || ("…" + p.slice(-4)));
+    const nameOf = p => c[p] || ("…" + p.slice(-4));
+    const targets = (mentioned || []).map(j => j.split("@")[0]);
+    if (!targets.length) {
+      // "bot admin" with no handle → list current admins
+      const names = cfg.admins.map(nameOf);
       await reply("Admini 🛡️: " + (names.length ? names.join(", ") : "(brak — tylko właściciel)"));
       return;
     }
-    const remove = low.startsWith("unadmin") || low.includes("usun") || low.includes("usuń") || low.includes("remove");
-    const targets = (mentioned || []).map(j => j.split("@")[0]);
-    if (!targets.length) { await reply("Oznacz osobę, np. \"bot admin @Marek\" lub \"bot admin usuń @Marek\"."); return; }
+    // "bot admin @osoba" → toggle (add if not admin, remove if already admin)
+    const added = [], removed = [];
     for (const t of targets) {
-      if (remove) cfg.admins = cfg.admins.filter(x => x !== t);
-      else if (cfg.admins.indexOf(t) < 0) cfg.admins.push(t);
+      const i = cfg.admins.indexOf(t);
+      if (i >= 0) { cfg.admins.splice(i, 1); removed.push(nameOf(t)); }
+      else { cfg.admins.push(t); added.push(nameOf(t)); }
     }
     saveConfig(cfg);
-    const names = targets.map(p => c[p] || ("…" + p.slice(-4)));
-    await reply((remove ? "Usunięto admina: " : "Dodano admina: ") + names.join(", ") + " 🛡️");
+    let m = "";
+    if (added.length) m += "Dodano admina 🛡️: " + added.join(", ");
+    if (removed.length) m += (m ? "\n" : "") + "Usunięto admina: " + removed.join(", ");
+    await reply(m);
     return;
   }
   if (low.startsWith("cofnij")) {
