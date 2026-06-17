@@ -1,0 +1,16 @@
+node_modules/
+auth_info/
+backups/
+calendar-repo/
+calendar.ics
+config.json
+state.json
+contacts.json
+history.json
+members.json
+NEEDS_REPAIR.txt
+_*.txt
+*.log
+.env
+secrets-repo/
+deploy.log

@@ -1,0 +1,14 @@
+{
+  "anthropicApiKey": "sk-ant-REDACTED",
+  "timezone": "Europe/Warsaw",
+  "groupJid": "XXXX@g.us",
+  "testGroupJid": "XXXX@g.us",
+  "reminderTimes": { "tuesday": "18:00", "wednesday": "17:00" },
+  "minPlayers": 6,
+  "notifyJid": "NUMBER@s.whatsapp.net",
+  "notifyLid": "LID@lid",
+  "blikNumber": "+48 000 000 000",
+  "defaultDay": "friday",
+  "defaultTime": "20:00",
+  "calendarPort": 3000
+}
