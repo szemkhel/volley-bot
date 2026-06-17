@@ -13,6 +13,7 @@ const STATE_FILE = path.join(DIR, "state.json");
 const CONFIG_FILE = path.join(DIR, "config.json");
 const CONTACTS_FILE = path.join(DIR, "contacts.json");
 const HISTORY_FILE = path.join(DIR, "history.json");
+const MVP_FILE = path.join(DIR, "mvp.json");
 const PHONE = process.env.PHONE || "";
 
 function loadState() {
@@ -112,6 +113,117 @@ async function recordVote(pollUpdate, voterJid) {
   else { state.voters[phone] = { jid: voterJid, options }; }
   saveState(state);
   console.log("Vote recorded:", phone, options.length ? "-> " + options.join(", ") : "(empty/retracted)");
+}
+
+function loadMvp() { try { return JSON.parse(fs.readFileSync(MVP_FILE, "utf8")); } catch { return []; } }
+function saveMvp(m) { fs.writeFileSync(MVP_FILE, JSON.stringify(m, null, 2)); }
+
+async function recordMvpVote(pollUpdate, voterJid) {
+  if (!state.mvpPoll || !pollUpdate) return;
+  const pk = pollUpdate.pollCreationMessageKey;
+  if (pk && pk.id && pk.id !== state.mvpPoll.messageKey.id) return;
+  if (!voterJid) return;
+  const phone = voterJid.split("@")[0];
+  let option = null;
+  try {
+    const p = state.mvpPoll;
+    if (p.encKeyB64 && pollUpdate.vote) {
+      const meta = decryptPollVote(pollUpdate.vote, {
+        pollCreatorJid: p.pollCreatorJid,
+        pollMsgId: p.messageKey.id,
+        pollEncKey: Buffer.from(p.encKeyB64, "base64"),
+        voterJid,
+      });
+      const sel = (meta.selectedOptions || []).map(b => Buffer.from(b).toString("hex"));
+      const opts = sel.map(h => p.optionHashes && p.optionHashes[h]).filter(Boolean);
+      option = opts[0] || null;
+    }
+  } catch (e) { console.error("mvp decrypt error:", e.message); }
+  if (!option) delete state.mvpPoll.votes[phone];
+  else state.mvpPoll.votes[phone] = option;
+  saveState(state);
+  console.log("MVP vote:", phone, "->", option || "(none)");
+}
+
+async function createMvpPoll(cfg) {
+  const contacts = loadContacts();
+  const hist = loadHistory();
+  let src = null;
+  for (let i = hist.length - 1; i >= 0; i--) {
+    if (hist[i].status !== "cancelled" && hist[i].attendees && hist[i].attendees.length) { src = hist[i].attendees; break; }
+  }
+  let candidates = [];
+  if (src) candidates = src.map(a => ({ phone: a.phone, name: a.name || contacts[a.phone] || ("Gracz " + a.phone.slice(-4)) }));
+  else if (state.activePoll) {
+    for (const phone in state.voters) {
+      if (weightOfOptions(state.voters[phone].options) > 0) candidates.push({ phone: phone, name: contacts[phone] || ("Gracz " + phone.slice(-4)) });
+    }
+  }
+  if (candidates.length < 2) { await sock.sendMessage(cfg.groupJid, { text: "Za mało graczy z ostatniego meczu na głosowanie MVP. 🏐" }); return; }
+  candidates = candidates.slice(0, 12);
+  const seenN = {};
+  const finalOpts = candidates.map(c => { let n = c.name; if (seenN[n]) { seenN[n]++; n = n + " (" + seenN[n] + ")"; } else seenN[n] = 1; return n; });
+  const sent = await sock.sendMessage(cfg.groupJid, { poll: { name: "MVP tygodnia 🏆 — kto był najlepszy?", values: finalOpts, selectableCount: 1 } });
+  const optionHashes = {};
+  for (const o of finalOpts) optionHashes[crypto.createHash("sha256").update(Buffer.from(o)).digest("hex")] = o;
+  const optToPlayer = {};
+  candidates.forEach((c, i) => { optToPlayer[finalOpts[i]] = { phone: c.phone, name: c.name }; });
+  const secret = sent.message?.messageContextInfo?.messageSecret;
+  state.mvpPoll = {
+    messageKey: { id: sent.key.id, remoteJid: cfg.groupJid },
+    optionHashes, optToPlayer,
+    pollCreatorJid: sock.user ? jidNormalizedUser(sock.user.lid || sock.user.id) : cfg.groupJid,
+    encKeyB64: secret ? Buffer.from(secret).toString("base64") : null,
+    votes: {}, timestamp: Date.now(),
+  };
+  saveState(state);
+  await notify(sock, cfg, "Utworzono głosowanie MVP (" + finalOpts.length + " kandydatów). Zamknięcie w niedzielę 21:00.");
+  console.log("MVP poll created with", finalOpts.length, "candidates");
+}
+
+async function closeMvpPoll(cfg) {
+  if (!state.mvpPoll) return;
+  const { generateMvpCongrats } = require("./reminder");
+  const tally = {};
+  for (const phone in state.mvpPoll.votes) { const o = state.mvpPoll.votes[phone]; tally[o] = (tally[o] || 0) + 1; }
+  const entries = Object.keys(tally).map(o => ({ o: o, c: tally[o] })).sort((a, b) => b.c - a.c);
+  if (!entries.length) {
+    await sock.sendMessage(cfg.groupJid, { text: "Nikt nie zagłosował na MVP w tym tygodniu. 🏐" });
+    state.mvpPoll = null; saveState(state); return;
+  }
+  const top = entries[0];
+  const winner = (state.mvpPoll.optToPlayer && state.mvpPoll.optToPlayer[top.o]) || { name: top.o, phone: null };
+  const mvp = loadMvp();
+  mvp.push({ date: new Date().toISOString().slice(0, 10), phone: winner.phone, name: winner.name, votes: top.c });
+  saveMvp(mvp);
+  const congrats = await generateMvpCongrats(winner.name, top.c, cfg);
+  const mentions = winner.phone ? [winner.phone.indexOf("@") >= 0 ? winner.phone : (winner.phone + "@lid")] : [];
+  const tag = winner.phone ? ("@" + winner.phone) : winner.name;
+  await sock.sendMessage(cfg.groupJid, { text: "🏆 MVP tygodnia: " + tag + " (" + top.c + " głosów)!\n" + congrats, mentions });
+  state.mvpPoll = null; saveState(state);
+  console.log("MVP closed, winner:", winner.name, top.c);
+}
+
+async function statystykiText(mentionedJid, cfg) {
+  const contacts = loadContacts();
+  if (!mentionedJid) return "Oznacz osobę, np. \"bot statystyki @Marek\". 🏐";
+  const phone = mentionedJid.split("@")[0];
+  const hist = loadHistory();
+  const played = hist.filter(h => h.status !== "cancelled");
+  let games = 0, lastDate = null;
+  for (const h of played) {
+    if ((h.attendees || []).some(a => a.phone === phone)) { games++; lastDate = h.date; }
+  }
+  if (state.activePoll && state.voters[phone] && weightOfOptions(state.voters[phone].options) > 0) games++;
+  const total = played.length + (state.activePoll ? 1 : 0);
+  const pct = total ? Math.round(games / total * 100) : 0;
+  const mvpWins = loadMvp().filter(m => m.phone === phone).length;
+  const name = contacts[phone] || ("@" + phone);
+  let m = "Statystyki — " + name + " 🏐\n";
+  m += "Obecność: " + games + " / " + total + " gier (" + pct + "%)\n";
+  m += "MVP: " + mvpWins + "x 🏆";
+  if (lastDate) m += "\nOstatni trening: " + lastDate;
+  return m;
 }
 
 function nextDateForDay(dayName) {
@@ -398,7 +510,7 @@ async function rankingText(cfg) {
   return lines.join(NL);
 }
 
-async function handleGroupCommand(text, cfg) {
+async function handleGroupCommand(text, cfg, mentioned) {
 
   const { interpretCommand, sendReminder, DAY_NAMES_PL_ACC } = require("./reminder");
   const { scheduleReminders } = require("./scheduler");
@@ -412,7 +524,7 @@ async function handleGroupCommand(text, cfg) {
   }
   const low = text.trim().toLowerCase();
   if (low.startsWith("pomoc") || low.startsWith("help")) {
-    await reply("Komendy 🏐\n• bot ankieta piątek 20:00 — nowa ankieta\n• bot status — liczba graczy\n• bot zmień dzień na czwartek / godzinę 21:00\n• bot frekwencja — frekwencja i trend\n• bot rozlicz — podziel koszt sali\n• bot ranking — obecność graczy\n• bot przypomnij — przypomnij teraz\n• bot pomoc — ta lista\n• bot nie gramy — odwołaj trening\n• bot cofnij odwołanie — przywróć trening");
+    await reply("Komendy 🏐\n• bot ankieta piątek 20:00 — nowa ankieta\n• bot status — liczba graczy\n• bot zmień dzień na czwartek / godzinę 21:00\n• bot frekwencja — frekwencja i trend\n• bot ranking — obecność graczy\n• bot statystyki @osoba — statystyki gracza\n• bot mvp — głosowanie MVP tygodnia\n• bot motywacja — motywacja od bota\n• bot rozlicz — podziel koszt sali\n• bot przypomnij — przypomnij teraz\n• bot nie gramy — odwołaj trening\n• bot cofnij odwołanie — przywróć trening\n• bot pomoc — ta lista");
     return;
   }
   if (low.startsWith("cofnij")) {
@@ -444,6 +556,19 @@ async function handleGroupCommand(text, cfg) {
   }
   if (low.startsWith("ranking")) {
     await reply(await rankingText(cfg));
+    return;
+  }
+  if (low.startsWith("statystyki") || low.startsWith("staty")) {
+    await reply(await statystykiText(mentioned && mentioned[0], cfg));
+    return;
+  }
+  if (low.startsWith("motywacja") || low.startsWith("motywuj")) {
+    const { generateMotivation } = require("./reminder");
+    await reply(await generateMotivation(cfg));
+    return;
+  }
+  if (low.startsWith("mvp")) {
+    await createMvpPoll(cfg);
     return;
   }
   if (low.startsWith("ankieta") || low.startsWith("pool") || low.startsWith("pula")) {
@@ -728,7 +853,8 @@ async function connectToWhatsApp() {
       if (cfg.groupJid && msg.key.remoteJid === cfg.groupJid) {
         const gtext = msg.message.conversation || msg.message.extendedTextMessage?.text;
         if (gtext && /^bot\b/i.test(gtext.trim()) && !gtext.startsWith("🤖") && !seen(msg.key.id)) {
-          await handleGroupCommand(gtext.trim().replace(/^bot\b[\s,:]*/i, ""), cfg);
+          const mentioned = msg.message.extendedTextMessage?.contextInfo?.mentionedJid || [];
+          await handleGroupCommand(gtext.trim().replace(/^bot\b[\s,:]*/i, ""), cfg, mentioned);
           continue;
         }
       }
@@ -748,6 +874,7 @@ async function connectToWhatsApp() {
         console.log("[DBG vote-upsert] type=" + type + " fromMe=" + msg.key.fromMe + " participant=" + msg.key.participant + " remoteJid=" + msg.key.remoteJid);
         const vjid = msg.key.participant || ((msg.key.fromMe && sock.user) ? jidNormalizedUser(sock.user.id) : msg.key.remoteJid);
         await recordVote(puUp, vjid);
+        await recordMvpVote(puUp, vjid);
         continue;
       }
 
@@ -858,8 +985,8 @@ async function connectToWhatsApp() {
         console.log("[DBG vote-update] hasMsgPU=" + !!pu + " pollUpdates=" + (puArr ? puArr.length : 0) + " key=" + JSON.stringify(update.key));
       }
       const voterJid = update.key.participant || update.key.remoteJid;
-      if (pu) await recordVote(pu, voterJid);
-      else if (puArr && puArr.length) { for (const p of puArr) await recordVote(p, voterJid); }
+      if (pu) { await recordVote(pu, voterJid); await recordMvpVote(pu, voterJid); }
+      else if (puArr && puArr.length) { for (const p of puArr) { await recordVote(p, voterJid); await recordMvpVote(p, voterJid); } }
     }
   });
 }
@@ -923,7 +1050,7 @@ function backupData() {
     const day = new Date().toLocaleDateString("en-CA", { timeZone: "Europe/Warsaw" });
     const dest = path.join(dir, day);
     if (!fs.existsSync(dest)) fs.mkdirSync(dest);
-    for (const f of ["state.json", "history.json", "contacts.json", "config.json"]) {
+    for (const f of ["state.json", "history.json", "contacts.json", "config.json", "mvp.json"]) {
       const src = path.join(DIR, f);
       if (fs.existsSync(src)) fs.copyFileSync(src, path.join(dest, f));
     }
@@ -937,6 +1064,11 @@ function backupData() {
 }
 
 const TZ = loadConfig().timezone || "Europe/Warsaw";
+
+// Sunday 21:00 — close the MVP poll (if any) and announce the winner
+cron.schedule("0 21 * * 0", () => {
+  closeMvpPoll(loadConfig()).catch(e => console.error("closeMvpPoll:", e.message));
+}, { timezone: TZ });
 
 // Monday 10:00 — detect game day from recent messages/poll
 cron.schedule("0 10 * * 1", async () => {

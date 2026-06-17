@@ -228,4 +228,40 @@ async function interpretCommand(text, state, config) {
   }
 }
 
-module.exports = { sendReminder, generateReminder, detectGameDay, analyzeGameResponse, interpretCommand, DAY_NAMES_PL_ACC };
+async function generateMotivation(config) {
+  try {
+    const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY || config.anthropicApiKey });
+    const resp = await client.messages.create({
+      model: "claude-haiku-4-5-20251001",
+      max_tokens: 120,
+      messages: [{
+        role: "user",
+        content: "Napisz krótką (1-2 zdania), energiczną i żartobliwą wiadomość motywacyjną po polsku dla grupy znajomych grających w siatkówkę. Ton koleżeński, z humorem, może z emoji 🏐. Bez formatowania markdown. Za każdym razem inna i kreatywna."
+      }]
+    });
+    return stripMarkdown(resp.content[0].text);
+  } catch (err) {
+    console.error("generateMotivation error:", err.message);
+    return "Dawajcie na trening, forma sama się nie zrobi! 🏐💪";
+  }
+}
+
+async function generateMvpCongrats(name, votes, config) {
+  try {
+    const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY || config.anthropicApiKey });
+    const resp = await client.messages.create({
+      model: "claude-haiku-4-5-20251001",
+      max_tokens: 120,
+      messages: [{
+        role: "user",
+        content: `Napisz krótkie (1-2 zdania), ciepłe i żartobliwe gratulacje po polsku dla gracza o imieniu "${name}", wybranego MVP tygodnia w siatkówce (${votes} głosów). Ton koleżeński, z humorem i emoji 🏆🏐. Bez markdown.`
+      }]
+    });
+    return stripMarkdown(resp.content[0].text);
+  } catch (err) {
+    console.error("generateMvpCongrats error:", err.message);
+    return `Gratulacje ${name}! 🏆 Zasłużone MVP tygodnia! 🏐`;
+  }
+}
+
+module.exports = { sendReminder, generateReminder, detectGameDay, analyzeGameResponse, interpretCommand, generateMotivation, generateMvpCongrats, DAY_NAMES_PL_ACC };
