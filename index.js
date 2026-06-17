@@ -7,6 +7,7 @@ const path = require("path");
 const cron = require("node-cron");
 const http = require("http");
 const { notify } = require("./notify");
+const { DAY_WORDS, attendanceFromTally, weightOfOptions, parseAnkieta, nextDateForDay } = require("./lib");
 
 const DIR = __dirname;
 const STATE_FILE = path.join(DIR, "state.json");
@@ -226,17 +227,6 @@ async function statystykiText(mentionedJid, cfg) {
   return m;
 }
 
-function nextDateForDay(dayName) {
-  const map = { sunday: 0, monday: 1, tuesday: 2, wednesday: 3, thursday: 4, friday: 5, saturday: 6 };
-  const target = map[dayName];
-  if (target == null) return null;
-  const warsawStr = new Date().toLocaleDateString("en-CA", { timeZone: "Europe/Warsaw" });
-  const base = new Date(warsawStr + "T12:00:00");
-  const add = (target - base.getDay() + 7) % 7;
-  base.setDate(base.getDate() + add);
-  return base.toISOString().slice(0, 10);
-}
-
 function archiveIfGamePassed(strict) {
   if (!state.activePoll || state.cancelled) return;
   const today = new Date().toLocaleDateString("en-CA", { timeZone: "Europe/Warsaw" });
@@ -257,42 +247,8 @@ function archiveIfGamePassed(strict) {
 
 const POLL_OPTIONS = ["Gram", "Nie gram", "Nie wiem", "Gram i przyprowadzam +1", "Gram i przyprowadzam +2"];
 
-const DAY_WORDS = {
-  "poniedzialek": "monday", "poniedziałek": "monday",
-  "wtorek": "tuesday",
-  "sroda": "wednesday", "środa": "wednesday", "srode": "wednesday", "środę": "wednesday",
-  "czwartek": "thursday",
-  "piatek": "friday", "piątek": "friday",
-  "sobota": "saturday", "sobote": "saturday", "sobotę": "saturday",
-  "niedziela": "sunday", "niedziele": "sunday", "niedzielę": "sunday",
-};
-
-function parseAnkieta(text) {
-  const lower = (text || "").toLowerCase();
-  let day = null;
-  for (const w in DAY_WORDS) { if (lower.includes(w)) { day = DAY_WORDS[w]; break; } }
-  let time = null;
-  const tm = lower.match(/(\d{1,2})[:.](\d{2})/);
-  if (tm) time = tm[1].padStart(2, "0") + ":" + tm[2];
-  else { const th = lower.match(/\b(\d{1,2})\b/); if (th) time = th[1].padStart(2, "0") + ":00"; }
-  return { day, time };
-}
-
 function loadHistory() { try { return JSON.parse(fs.readFileSync(HISTORY_FILE, "utf8")); } catch { return []; } }
 function saveHistory(h) { fs.writeFileSync(HISTORY_FILE, JSON.stringify(h, null, 2)); }
-
-function attendanceFromTally(tally) {
-  let players = 0;
-  for (const o in tally) {
-    if (o === "Gram") players += tally[o];
-    else if (/przyprowadzam/i.test(o)) {
-      const m = o.match(/\+\s*(\d+)/);
-      const extra = m ? parseInt(m[1], 10) : 1;
-      players += tally[o] * (1 + extra);
-    }
-  }
-  return players;
-}
 
 function archiveCurrentPoll(status) {
   if (!state.activePoll) return;
@@ -372,12 +328,6 @@ async function createPoll(cfg, day, time, targetJid) {
   scheduleReminders(sock, state, saveState, cfg, state.gameDay);
   console.log("Poll created:", name, "encKey:", secret ? "yes" : "NO");
   return name;
-}
-
-function weightOfOptions(opts) {
-  const t = {};
-  for (const o of (opts || [])) t[o] = (t[o] || 0) + 1;
-  return attendanceFromTally(t);
 }
 
 function buildSettlement(cost, realPeople, cfg) {

@@ -4,7 +4,8 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "node --test",
+    "check": "node --check index.js && node --check reminder.js && node --check scheduler.js && node --check notify.js && node --check lib.js"
   },
   "keywords": [],
   "author": "",
