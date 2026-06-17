@@ -8,11 +8,11 @@ o głosowaniu, liczy frekwencję, dzieli koszt sali i udostępnia kalendarz tren
 Dodaj kalendarz do telefonu/komputera, żeby zawsze widzieć najbliższy trening
 (aktualizuje się automatycznie, gdy zmienia się dzień lub godzina):
 
-**Link:** `https://raw.githubusercontent.com/szemkhel/volley-bot/calendar/calendar.ics`
+**Link do kalendarza (skopiuj):**
+`https://raw.githubusercontent.com/szemkhel/volley-bot/calendar/calendar.ics`
 
-- **Google Calendar (komputer):** Inne kalendarze → ➕ → *Z adresu URL* → wklej link → *Dodaj kalendarz*
+- **Google Calendar — najszybciej:** otwórz [stronę „Dodaj przez URL"](https://calendar.google.com/calendar/u/0/r/settings/addbyurl), wklej powyższy link i kliknij *Dodaj kalendarz*. (Na telefonie z Androidem pojawi się automatycznie po dodaniu na koncie Google.)
 - **iPhone:** Ustawienia → Kalendarz → Konta → Dodaj konto → Inne → *Dodaj subskrybowany kalendarz* → wklej link
-- **Android:** najłatwiej dodać przez Google Calendar na komputerze — pojawi się też w telefonie
 
 > Aplikacje odświeżają subskrybowany kalendarz co kilka godzin, więc zmiana terminu pojawia się z lekkim opóźnieniem.
 
