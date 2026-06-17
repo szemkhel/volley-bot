@@ -7,7 +7,7 @@ const path = require("path");
 const cron = require("node-cron");
 const http = require("http");
 const { notify } = require("./notify");
-const { DAY_WORDS, attendanceFromTally, weightOfOptions, parseAnkieta, nextDateForDay } = require("./lib");
+const { DAY_WORDS, attendanceFromTally, weightOfOptions, parseAnkieta, nextDateForDay, isAdmin } = require("./lib");
 
 const DIR = __dirname;
 const STATE_FILE = path.join(DIR, "state.json");
@@ -460,7 +460,7 @@ async function rankingText(cfg) {
   return lines.join(NL);
 }
 
-async function handleGroupCommand(text, cfg, mentioned) {
+async function handleGroupCommand(text, cfg, mentioned, senderPhone, isFromMe) {
 
   const { interpretCommand, sendReminder, DAY_NAMES_PL_ACC } = require("./reminder");
   const { scheduleReminders } = require("./scheduler");
@@ -468,16 +468,47 @@ async function handleGroupCommand(text, cfg, mentioned) {
     await sock.sendMessage(cfg.groupJid, { text: t });
     await notify(sock, cfg, "Komenda z grupy: " + JSON.stringify(text));
   };
+  // Authorization: owner (fromMe) + configured admins (by lid/phone) can run state-changing commands
+  const admins = cfg.admins || [];
+  const ownerLidPhone = (cfg.notifyLid || "").split("@")[0];
+  const allowed = isAdmin(senderPhone, !!isFromMe, admins, ownerLidPhone);
+  const denyIfNotAdmin = async () => {
+    if (allowed) return false;
+    await sock.sendMessage(cfg.groupJid, { text: "⛔ Ta komenda jest tylko dla adminów. Poproś organizatora." });
+    return true;
+  };
   if (!text || !text.trim()) {
     await reply("Cześć! 🏐 Komendy: \"bot ankieta piątek 20:00\", \"bot status\", \"bot frekwencja\", \"bot przypomnij\", \"bot nie gramy\".");
     return;
   }
   const low = text.trim().toLowerCase();
   if (low.startsWith("pomoc") || low.startsWith("help")) {
-    await reply("Komendy 🏐\n• bot ankieta piątek 20:00 — nowa ankieta\n• bot status — liczba graczy\n• bot zmień dzień na czwartek / godzinę 21:00\n• bot frekwencja — frekwencja i trend\n• bot ranking — obecność graczy\n• bot statystyki @osoba — statystyki gracza\n• bot mvp — głosowanie MVP tygodnia\n• bot motywacja — motywacja od bota\n• bot rozlicz — podziel koszt sali\n• bot przypomnij — przypomnij teraz\n• bot nie gramy — odwołaj trening\n• bot cofnij odwołanie — przywróć trening\n• bot pomoc — ta lista");
+    await reply("Komendy 🏐\nDla wszystkich:\n• bot status — liczba graczy\n• bot frekwencja — frekwencja i trend\n• bot ranking — obecność graczy\n• bot statystyki @osoba — statystyki gracza\n• bot motywacja — motywacja od bota\nTylko admini 🛡️:\n• bot ankieta piątek 20:00 — nowa ankieta\n• bot zmień dzień/godzinę — zmiana terminu\n• bot mvp — głosowanie MVP\n• bot rozlicz — podziel koszt sali\n• bot przypomnij — przypomnij teraz\n• bot nie gramy / cofnij odwołanie");
+    return;
+  }
+  if (low.startsWith("admin") || low.startsWith("unadmin")) {
+    if (!isFromMe) { await sock.sendMessage(cfg.groupJid, { text: "⛔ Tylko właściciel może zarządzać adminami." }); return; }
+    cfg.admins = cfg.admins || [];
+    const c = loadContacts();
+    if (low.includes("lista") || low.includes("list")) {
+      const names = cfg.admins.map(p => c[p] || ("…" + p.slice(-4)));
+      await reply("Admini 🛡️: " + (names.length ? names.join(", ") : "(brak — tylko właściciel)"));
+      return;
+    }
+    const remove = low.startsWith("unadmin") || low.includes("usun") || low.includes("usuń") || low.includes("remove");
+    const targets = (mentioned || []).map(j => j.split("@")[0]);
+    if (!targets.length) { await reply("Oznacz osobę, np. \"bot admin @Marek\" lub \"bot admin usuń @Marek\"."); return; }
+    for (const t of targets) {
+      if (remove) cfg.admins = cfg.admins.filter(x => x !== t);
+      else if (cfg.admins.indexOf(t) < 0) cfg.admins.push(t);
+    }
+    saveConfig(cfg);
+    const names = targets.map(p => c[p] || ("…" + p.slice(-4)));
+    await reply((remove ? "Usunięto admina: " : "Dodano admina: ") + names.join(", ") + " 🛡️");
     return;
   }
   if (low.startsWith("cofnij")) {
+    if (await denyIfNotAdmin()) return;
     if (!state.cancelled || !state.preCancel) { await reply("Nie ma czego cofać — w tym tygodniu trening nie był odwołany."); return; }
     state.activePoll = state.preCancel.activePoll || null;
     state.voters = state.preCancel.voters || {};
@@ -492,6 +523,7 @@ async function handleGroupCommand(text, cfg, mentioned) {
     return;
   }
   if (low.startsWith("rozlicz")) {
+    if (await denyIfNotAdmin()) return;
     const nums = (text.match(/\d+([.,]\d+)?/g) || []).map(function (x) { return parseFloat(x.replace(",", ".")); });
     if (nums.length >= 2) {
       state.pendingRozliczenie = { cost: nums[0], people: Math.round(nums[1]), ts: Date.now() };
@@ -518,10 +550,12 @@ async function handleGroupCommand(text, cfg, mentioned) {
     return;
   }
   if (low.startsWith("mvp")) {
+    if (await denyIfNotAdmin()) return;
     await createMvpPoll(cfg);
     return;
   }
   if (low.startsWith("ankieta") || low.startsWith("pool") || low.startsWith("pula")) {
+    if (await denyIfNotAdmin()) return;
     const { day, time } = parseAnkieta(text);
     if (!day) { await reply("Podaj dzień, np. \"bot ankieta piątek 20:00\". 🏐"); return; }
     const name = await createPoll(cfg, day, time, cfg.groupJid);
@@ -529,6 +563,7 @@ async function handleGroupCommand(text, cfg, mentioned) {
     return;
   }
   if (low.startsWith("zmień") || low.startsWith("zmien") || low.startsWith("zmiana")) {
+    if (await denyIfNotAdmin()) return;
     if (!state.activePoll) { await reply("Nie ma aktywnej ankiety do zmiany. Najpierw: bot ankieta piątek 20:00"); return; }
     const pa = parseAnkieta(text);
     if (!pa.day && !pa.time) { await reply("Podaj co zmienić, np. \"bot zmień dzień na czwartek\" albo \"bot zmień godzinę 21:00\"."); return; }
@@ -546,6 +581,8 @@ async function handleGroupCommand(text, cfg, mentioned) {
   }
   const cmd = await interpretCommand(text, state, cfg);
   console.log("[Group command]", JSON.stringify(text), "->", JSON.stringify(cmd));
+
+  if ((cmd.action === "schedule" || cmd.action === "remind" || cmd.action === "cancel") && await denyIfNotAdmin()) return;
 
   if (cmd.action === "status") {
     const dayPl = DAY_NAMES_PL_ACC[state.gameDay] || state.gameDay || "?";
@@ -804,7 +841,9 @@ async function connectToWhatsApp() {
         const gtext = msg.message.conversation || msg.message.extendedTextMessage?.text;
         if (gtext && /^bot\b/i.test(gtext.trim()) && !gtext.startsWith("🤖") && !seen(msg.key.id)) {
           const mentioned = msg.message.extendedTextMessage?.contextInfo?.mentionedJid || [];
-          await handleGroupCommand(gtext.trim().replace(/^bot\b[\s,:]*/i, ""), cfg, mentioned);
+          const sJid = msg.key.participant || msg.key.remoteJid;
+          const sPhone = sJid ? sJid.split("@")[0] : "";
+          await handleGroupCommand(gtext.trim().replace(/^bot\b[\s,:]*/i, ""), cfg, mentioned, sPhone, !!msg.key.fromMe);
           continue;
         }
       }
