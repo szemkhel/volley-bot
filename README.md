@@ -16,3 +16,6 @@ node index.js
 ```
 
 Secrets live in `.env` (git-ignored). Never commit real credentials.
+
+## Subscribe to calendar
+https://raw.githubusercontent.com/szemkhel/volley-cal/main/calendar.ics
