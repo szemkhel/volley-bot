@@ -1,6 +1,6 @@
 const test = require("node:test");
 const assert = require("node:assert");
-const { attendanceFromTally, weightOfOptions, parseAnkieta, nextDateForDay } = require("../lib");
+const { attendanceFromTally, weightOfOptions, parseAnkieta, nextDateForDay, isAdmin } = require("../lib");
 
 test("attendanceFromTally: Gram counts as 1 each", () => {
   assert.strictEqual(attendanceFromTally({ "Gram": 3 }), 3);
@@ -62,4 +62,22 @@ test("nextDateForDay: wraps to next week", () => {
 
 test("nextDateForDay: invalid day -> null", () => {
   assert.strictEqual(nextDateForDay("nonsense", new Date("2026-06-15T10:00:00Z")), null);
+});
+
+test("isAdmin: owner (fromMe) always allowed", () => {
+  assert.strictEqual(isAdmin("", true, [], ""), true);
+  assert.strictEqual(isAdmin("999", true, [], "111"), true);
+});
+
+test("isAdmin: owner LID allowed", () => {
+  assert.strictEqual(isAdmin("272211084579057", false, [], "272211084579057"), true);
+});
+
+test("isAdmin: listed admin allowed", () => {
+  assert.strictEqual(isAdmin("555", false, ["555", "777"], "111"), true);
+});
+
+test("isAdmin: non-admin denied", () => {
+  assert.strictEqual(isAdmin("888", false, ["555"], "111"), false);
+  assert.strictEqual(isAdmin("", false, ["555"], "111"), false);
 });

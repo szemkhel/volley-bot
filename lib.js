@@ -57,4 +57,12 @@ function nextDateForDay(dayName, now) {
   return base.toISOString().slice(0, 10);
 }
 
-module.exports = { DAY_WORDS, attendanceFromTally, weightOfOptions, parseAnkieta, nextDateForDay };
+// Authorization: owner (fromMe) always; otherwise must match owner LID or be in admins list
+function isAdmin(senderPhone, isFromMe, admins, ownerLidPhone) {
+  if (isFromMe) return true;
+  if (!senderPhone) return false;
+  if (ownerLidPhone && senderPhone === ownerLidPhone) return true;
+  return (admins || []).indexOf(senderPhone) >= 0;
+}
+
+module.exports = { DAY_WORDS, attendanceFromTally, weightOfOptions, parseAnkieta, nextDateForDay, isAdmin };
