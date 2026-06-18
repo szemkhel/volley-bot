@@ -60,6 +60,8 @@ function pollIsRecent(activePoll) {
   return activePoll && (Date.now() - activePoll.timestamp) < 7 * 24 * 60 * 60 * 1000;
 }
 
+const BOT_TAG = "🤖SiatkoBot🤖";
+
 let state = loadState();
 let contacts = loadContacts();
 let recentMessages = [];
@@ -739,6 +741,20 @@ async function connectToWhatsApp() {
     auth: authState,
     printQRInTerminal: false,
   });
+
+  // Tag every GROUP message with the bot name so members know it's the bot,
+  // not the owner's personal account (bot runs on the owner's number).
+  const _send = sock.sendMessage.bind(sock);
+  sock.sendMessage = (jid, content, options) => {
+    if (jid && typeof jid === "string" && jid.endsWith("@g.us") && content && typeof content === "object") {
+      if (typeof content.text === "string" && content.text.indexOf(BOT_TAG) !== 0) {
+        content = Object.assign({}, content, { text: BOT_TAG + "\n" + content.text });
+      } else if (content.poll && typeof content.poll.name === "string" && content.poll.name.indexOf(BOT_TAG) !== 0) {
+        content = Object.assign({}, content, { poll: Object.assign({}, content.poll, { name: BOT_TAG + " " + content.poll.name }) });
+      }
+    }
+    return _send(jid, content, options);
+  };
 
   sock.ev.on("creds.update", saveCreds);
 
