@@ -281,10 +281,9 @@ async function proposeFeatures(messages, config) {
         role: "user",
         content: `Jesteś asystentem rozwijającym bota WhatsApp dla grupy siatkarskiej. Bot ma już komendy: ${existing}.\n\n` +
           `Rozmowy z grupy z ostatniego tygodnia:\n${convo || "(brak rozmów)"}\n\n` +
-          `Na podstawie tych rozmów zaproponuj 2-4 NOWE, konkretne komendy lub funkcje bota, które realnie pomogłyby tej grupie. ` +
-          `Nie powtarzaj istniejących komend. Jeśli rozmowy nic nie sugerują, zaproponuj sensowne usprawnienia ogólne. ` +
-          `Dla każdej propozycji: krótka nazwa komendy oraz jedno zdanie po co. Poprawna, naturalna polszczyzna, bez markdown. ` +
-          `Zacznij od linijki "💡 Propozycje rozwoju bota (na podstawie rozmów z tygodnia):".`
+          `Na podstawie tych rozmów zaproponuj 2-4 NOWE, konkretne komendy lub funkcje bota, które realnie pomogłyby tej grupie. Nie powtarzaj istniejących komend. ` +
+          `Dla każdej propozycji: krótka nazwa komendy oraz jedno zdanie po co. Poprawna, naturalna polszczyzna, bez markdown. Zacznij od linijki "💡 Propozycje rozwoju bota (na podstawie rozmów z tygodnia):". ` +
+          `WAŻNE: NIE wymyślaj na siłę. Jeśli z rozmów nie wynikają żadne sensowne, nowe pomysły, odpowiedz DOKŁADNIE: "Brak nowych pomysłów na rozwój bota w tym tygodniu. 🤖" i nic poza tym (bez nagłówka, bez listy).`
       }]
     });
     return resp.content[0].text.trim();
