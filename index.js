@@ -15,6 +15,7 @@ const CONFIG_FILE = path.join(DIR, "config.json");
 const CONTACTS_FILE = path.join(DIR, "contacts.json");
 const HISTORY_FILE = path.join(DIR, "history.json");
 const MVP_FILE = path.join(DIR, "mvp.json");
+const WEEKLOG_FILE = path.join(DIR, "weeklog.json");
 const PHONE = process.env.PHONE || "";
 
 function loadState() {
@@ -56,6 +57,16 @@ function saveContacts(contacts) {
   fs.writeFileSync(CONTACTS_FILE, JSON.stringify(contacts, null, 2));
 }
 
+// Persistent rolling log of group chat for the hidden weekly feature-proposal job
+function loadWeekLog() { try { return JSON.parse(fs.readFileSync(WEEKLOG_FILE, "utf8")); } catch { return []; } }
+function saveWeekLog(l) { fs.writeFileSync(WEEKLOG_FILE, JSON.stringify(l, null, 2)); }
+function appendWeekLog(entry) {
+  weekLog.push(entry);
+  const cutoff = Date.now() - 8 * 24 * 60 * 60 * 1000;
+  weekLog = weekLog.filter(m => (m.ts || 0) > cutoff).slice(-1000);
+  saveWeekLog(weekLog);
+}
+
 function pollIsRecent(activePoll) {
   return activePoll && (Date.now() - activePoll.timestamp) < 7 * 24 * 60 * 60 * 1000;
 }
@@ -64,6 +75,7 @@ const BOT_TAG = "🤖SiatkoBot🤖";
 
 let state = loadState();
 let contacts = loadContacts();
+let weekLog = loadWeekLog();
 let recentMessages = [];
 let sock = null;
 let reminderScheduled = false;
@@ -906,6 +918,7 @@ async function connectToWhatsApp() {
           const senderName = contacts[senderJid?.split("@")[0]] || msg.pushName || senderJid?.split("@")[0];
           recentMessages.push({ sender: senderName, text });
           if (recentMessages.length > 20) recentMessages.shift();
+          appendWeekLog({ sender: senderName, text: text, ts: Date.now() });
 
           if (text.startsWith("!gameday ")) {
             const newDay = text.split(" ")[1]?.trim().toLowerCase();
@@ -1060,7 +1073,7 @@ function backupData() {
     const day = new Date().toLocaleDateString("en-CA", { timeZone: "Europe/Warsaw" });
     const dest = path.join(dir, day);
     if (!fs.existsSync(dest)) fs.mkdirSync(dest);
-    for (const f of ["state.json", "history.json", "contacts.json", "config.json", "mvp.json"]) {
+    for (const f of ["state.json", "history.json", "contacts.json", "config.json", "mvp.json", "weeklog.json"]) {
       const src = path.join(DIR, f);
       if (fs.existsSync(src)) fs.copyFileSync(src, path.join(dest, f));
     }
@@ -1078,6 +1091,24 @@ const TZ = loadConfig().timezone || "Europe/Warsaw";
 // Sunday 21:00 — close the MVP poll (if any) and announce the winner
 cron.schedule("0 21 * * 0", () => {
   closeMvpPoll(loadConfig()).catch(e => console.error("closeMvpPoll:", e.message));
+}, { timezone: TZ });
+
+// Sunday 20:00 — HIDDEN: analyze the week's group chat → DM feature proposals to TEST group ONLY (never the real group)
+cron.schedule("0 20 * * 0", async () => {
+  const cfg = loadConfig();
+  if (!cfg.testGroupJid || !sock) return;
+  const recent = weekLog.filter(m => Date.now() - (m.ts || 0) < 7 * 24 * 60 * 60 * 1000);
+  if (!recent.length) { console.log("[FeatureProposals] no group chat this week — skipping"); return; }
+  try {
+    const { proposeFeatures } = require("./reminder");
+    const text = await proposeFeatures(recent, cfg);
+    if (text) {
+      await sock.sendMessage(cfg.testGroupJid, { text });
+      console.log("[FeatureProposals] sent to test group (" + recent.length + " msgs analyzed)");
+    }
+  } catch (e) { console.error("[FeatureProposals] error:", e.message); }
+  weekLog = recent;
+  saveWeekLog(weekLog);
 }, { timezone: TZ });
 
 // Monday 10:00 — detect game day from recent messages/poll

@@ -268,4 +268,30 @@ async function generateMvpCongrats(name, votes, config) {
   }
 }
 
-module.exports = { sendReminder, generateReminder, detectGameDay, analyzeGameResponse, interpretCommand, generateMotivation, generateMvpCongrats, DAY_NAMES_PL_ACC };
+// Hidden weekly job: analyze the week's group chat → propose NEW bot commands/features (test group only)
+async function proposeFeatures(messages, config) {
+  try {
+    const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY || config.anthropicApiKey });
+    const convo = messages.slice(-250).map(m => `${m.sender}: ${m.text}`).join("\n").slice(-7000);
+    const existing = "ankieta, status, frekwencja, ranking, statystyki, mvp, motywacja, zmień, gramy, nie gramy, cofnij, rozlicz, przypomnij, pomoc, admin";
+    const resp = await client.messages.create({
+      model: CREATIVE_MODEL,
+      max_tokens: 600,
+      messages: [{
+        role: "user",
+        content: `Jesteś asystentem rozwijającym bota WhatsApp dla grupy siatkarskiej. Bot ma już komendy: ${existing}.\n\n` +
+          `Rozmowy z grupy z ostatniego tygodnia:\n${convo || "(brak rozmów)"}\n\n` +
+          `Na podstawie tych rozmów zaproponuj 2-4 NOWE, konkretne komendy lub funkcje bota, które realnie pomogłyby tej grupie. ` +
+          `Nie powtarzaj istniejących komend. Jeśli rozmowy nic nie sugerują, zaproponuj sensowne usprawnienia ogólne. ` +
+          `Dla każdej propozycji: krótka nazwa komendy oraz jedno zdanie po co. Poprawna, naturalna polszczyzna, bez markdown. ` +
+          `Zacznij od linijki "💡 Propozycje rozwoju bota (na podstawie rozmów z tygodnia):".`
+      }]
+    });
+    return resp.content[0].text.trim();
+  } catch (err) {
+    console.error("proposeFeatures error:", err.message);
+    return null;
+  }
+}
+
+module.exports = { sendReminder, generateReminder, detectGameDay, analyzeGameResponse, interpretCommand, generateMotivation, generateMvpCongrats, proposeFeatures, DAY_NAMES_PL_ACC };
