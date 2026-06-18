@@ -2,6 +2,10 @@ const Anthropic = require("@anthropic-ai/sdk");
 const fs = require("fs");
 const path = require("path");
 
+// Stronger model for creative Polish prose; cheap model for classification.
+const CREATIVE_MODEL = "claude-sonnet-4-6";
+const CLASSIFY_MODEL = "claude-haiku-4-5-20251001";
+
 const TEMPLATES = [
   "Hej {mentions}! Piłka woła, głosowanie czeka! Będziecie w {day}? 🏐",
   "{mentions} - ankieta na volleyball w {day} jest otwarta! Dajcie znać czy gracie 😄",
@@ -49,7 +53,7 @@ async function detectGameDay(pollQuestion, recentMessages, config) {
     const context = recentMessages.slice(-10).map(m => `${m.sender}: ${m.text}`).join("\n");
 
     const resp = await client.messages.create({
-      model: "claude-haiku-4-5-20251001",
+      model: CLASSIFY_MODEL,
       max_tokens: 20,
       messages: [{
         role: "user",
@@ -76,7 +80,7 @@ async function analyzeGameResponse(recentMessages, config) {
     const context = recentMessages.slice(-10).map(m => `${m.sender}: ${m.text}`).join("\n");
 
     const resp = await client.messages.create({
-      model: "claude-haiku-4-5-20251001",
+      model: CLASSIFY_MODEL,
       max_tokens: 60,
       messages: [{
         role: "user",
@@ -118,7 +122,7 @@ async function generateReminder(nonVoters, config, isUrgent, gameDay = "friday")
       : `To pierwsze przypomnienie w tym tygodniu.`;
 
     const resp = await client.messages.create({
-      model: "claude-haiku-4-5-20251001",
+      model: CREATIVE_MODEL,
       max_tokens: 400,
       messages: [{
         role: "user",
@@ -193,7 +197,7 @@ async function interpretCommand(text, state, config) {
   try {
     const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY || config.anthropicApiKey });
     const resp = await client.messages.create({
-      model: "claude-haiku-4-5-20251001",
+      model: CLASSIFY_MODEL,
       max_tokens: 60,
       messages: [{
         role: "user",
@@ -232,11 +236,11 @@ async function generateMotivation(config) {
   try {
     const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY || config.anthropicApiKey });
     const resp = await client.messages.create({
-      model: "claude-haiku-4-5-20251001",
-      max_tokens: 120,
+      model: CREATIVE_MODEL,
+      max_tokens: 150,
       messages: [{
         role: "user",
-        content: "Napisz krótką (1-2 zdania), energiczną i żartobliwą wiadomość motywacyjną po polsku dla grupy znajomych grających w siatkówkę. Ton koleżeński, z humorem, może z emoji 🏐. Bez formatowania markdown. Za każdym razem inna i kreatywna."
+        content: "Napisz krótką (1-2 zdania) wiadomość motywacyjną po polsku dla grupy znajomych grających w siatkówkę. Energiczna, żartobliwa, koleżeńska, może z jednym emoji 🏐. KONIECZNIE poprawna i naturalna polszczyzna — bez błędów gramatycznych, ortograficznych ani dziwnych sformułowań/kalek językowych. Bez formatowania markdown. Za każdym razem inna i kreatywna."
       }]
     });
     return stripMarkdown(resp.content[0].text);
@@ -250,11 +254,11 @@ async function generateMvpCongrats(name, votes, config) {
   try {
     const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY || config.anthropicApiKey });
     const resp = await client.messages.create({
-      model: "claude-haiku-4-5-20251001",
-      max_tokens: 120,
+      model: CREATIVE_MODEL,
+      max_tokens: 150,
       messages: [{
         role: "user",
-        content: `Napisz krótkie (1-2 zdania), ciepłe i żartobliwe gratulacje po polsku dla gracza o imieniu "${name}", wybranego MVP tygodnia w siatkówce (${votes} głosów). Ton koleżeński, z humorem i emoji 🏆🏐. Bez markdown.`
+        content: `Napisz krótkie (1-2 zdania) gratulacje po polsku dla gracza o imieniu "${name}", wybranego MVP tygodnia w siatkówce (${votes} głosów). Ciepłe, żartobliwe, koleżeńskie, z emoji 🏆🏐. KONIECZNIE poprawna, naturalna polszczyzna bez błędów językowych. Bez markdown.`
       }]
     });
     return stripMarkdown(resp.content[0].text);
