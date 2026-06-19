@@ -900,6 +900,17 @@ async function connectToWhatsApp() {
         continue;
       }
 
+      // Week-log capture (hidden weekly proposal job): all group chat incl. OWNER's own messages,
+      // but NOT the bot's own tagged messages, notify echoes, command prompts, or "bot ..." commands.
+      if (cfg.groupJid && msg.key.remoteJid === cfg.groupJid) {
+        const wtext = msg.message.conversation || msg.message.extendedTextMessage?.text;
+        if (wtext && wtext.indexOf(BOT_TAG) !== 0 && !wtext.startsWith("🤖") && !wtext.startsWith("💰") && !/^bot\b/i.test(wtext.trim())) {
+          const wjid = msg.key.participant || msg.key.remoteJid;
+          const wname = msg.key.fromMe ? "Ja (organizator)" : (contacts[wjid?.split("@")[0]] || msg.pushName || wjid?.split("@")[0]);
+          appendWeekLog({ sender: wname, text: wtext, ts: Date.now() });
+        }
+      }
+
       if (type !== "notify") continue;
       if (msg.key.fromMe) continue;
 
@@ -918,7 +929,6 @@ async function connectToWhatsApp() {
           const senderName = contacts[senderJid?.split("@")[0]] || msg.pushName || senderJid?.split("@")[0];
           recentMessages.push({ sender: senderName, text });
           if (recentMessages.length > 20) recentMessages.shift();
-          appendWeekLog({ sender: senderName, text: text, ts: Date.now() });
 
           if (text.startsWith("!gameday ")) {
             const newDay = text.split(" ")[1]?.trim().toLowerCase();
