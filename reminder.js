@@ -268,22 +268,24 @@ async function generateMvpCongrats(name, votes, config) {
   }
 }
 
-// Hidden weekly job: analyze the week's group chat → propose NEW bot commands/features (test group only)
-async function proposeFeatures(messages, config) {
+// Hidden weekly job: analyze the week's group chat + user suggestions → propose NEW bot commands/features (test group only)
+async function proposeFeatures(messages, suggestions, config) {
   try {
     const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY || config.anthropicApiKey });
-    const convo = messages.slice(-250).map(m => `${m.sender}: ${m.text}`).join("\n").slice(-7000);
-    const existing = "ankieta, status, frekwencja, ranking, statystyki, mvp, motywacja, zmień, gramy, nie gramy, cofnij, rozlicz, przypomnij, pomoc, admin";
+    const convo = (messages || []).slice(-250).map(m => `${m.sender}: ${m.text}`).join("\n").slice(-7000);
+    const sugg = (suggestions || []).slice(-50).map(s => `- ${s.author || "?"}: ${s.text}`).join("\n").slice(-3000);
+    const existing = "ankieta, status, frekwencja, ranking, statystyki, mvp, motywacja, kalendarz, sugestia, zmień, gramy, nie gramy, cofnij, rozlicz, koszt sali, przypomnij, pomoc, admin";
     const resp = await client.messages.create({
       model: CREATIVE_MODEL,
-      max_tokens: 600,
+      max_tokens: 700,
       messages: [{
         role: "user",
         content: `Jesteś asystentem rozwijającym bota WhatsApp dla grupy siatkarskiej. Bot ma już komendy: ${existing}.\n\n` +
           `Rozmowy z grupy z ostatniego tygodnia:\n${convo || "(brak rozmów)"}\n\n` +
-          `Na podstawie tych rozmów zaproponuj 2-4 NOWE, konkretne komendy lub funkcje bota, które realnie pomogłyby tej grupie. Nie powtarzaj istniejących komend. ` +
-          `Dla każdej propozycji: krótka nazwa komendy oraz jedno zdanie po co. Poprawna, naturalna polszczyzna, bez markdown. Zacznij od linijki "💡 Propozycje rozwoju bota (na podstawie rozmów z tygodnia):". ` +
-          `WAŻNE: NIE wymyślaj na siłę. Jeśli z rozmów nie wynikają żadne sensowne, nowe pomysły, odpowiedz DOKŁADNIE: "Brak nowych pomysłów na rozwój bota w tym tygodniu. 🤖" i nic poza tym (bez nagłówka, bez listy).`
+          `Sugestie zgłoszone wprost przez członków grupy (komenda „bot sugestia"):\n${sugg || "(brak zgłoszonych sugestii)"}\n\n` +
+          `Zaproponuj 2-4 NOWE, konkretne komendy lub funkcje bota, które realnie pomogłyby tej grupie. Potraktuj zgłoszone sugestie PRIORYTETOWO — przy każdej, która pochodzi od członka, dopisz „(zgłoszone przez <imię>)". Nie powtarzaj istniejących komend. ` +
+          `Dla każdej propozycji: krótka nazwa komendy oraz jedno zdanie po co. Poprawna, naturalna polszczyzna, bez markdown. Zacznij od linijki "💡 Propozycje rozwoju bota:". ` +
+          `WAŻNE: jeśli NIE ma zgłoszonych sugestii ANI nic sensownego nie wynika z rozmów, odpowiedz DOKŁADNIE: "Brak nowych pomysłów na rozwój bota w tym tygodniu. 🤖" i nic poza tym.`
       }]
     });
     return resp.content[0].text.trim();
