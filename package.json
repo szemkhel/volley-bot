@@ -12,6 +12,7 @@
   "license": "ISC",
   "dependencies": {
     "@anthropic-ai/sdk": "^0.104.2",
+    "@napi-rs/canvas": "^1.0.0",
     "@whiskeysockets/baileys": "^7.0.0-rc13",
     "dotenv": "^17.4.2",
     "node-cron": "^4.2.1",
