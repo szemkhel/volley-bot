@@ -497,7 +497,7 @@ async function handleGroupCommand(text, cfg, mentioned, senderPhone, isFromMe) {
   }
   const low = text.trim().toLowerCase();
   if (low.startsWith("pomoc") || low.startsWith("help")) {
-    await reply("Komendy 🏐\nDla wszystkich:\n• bot status — liczba graczy\n• bot frekwencja — frekwencja i trend\n• bot ranking — obecność graczy\n• bot statystyki @osoba — statystyki gracza\n• bot motywacja — motywacja od bota\nTylko admini 🛡️:\n• bot ankieta piątek 20:00 — nowa ankieta\n• bot zmień dzień/godzinę — zmiana terminu\n• bot mvp — głosowanie MVP\n• bot rozlicz — podziel koszt sali\n• bot przypomnij — przypomnij teraz\n• bot nie gramy / cofnij odwołanie");
+    await reply("Komendy 🏐\nDla wszystkich:\n• bot status — liczba graczy\n• bot frekwencja — frekwencja i trend\n• bot ranking — obecność graczy\n• bot statystyki @osoba — statystyki gracza\n• bot motywacja — motywacja od bota\n• bot kalendarz — jak dodać kalendarz treningów\nTylko admini 🛡️:\n• bot ankieta piątek 20:00 — nowa ankieta\n• bot zmień dzień/godzinę — zmiana terminu\n• bot mvp — głosowanie MVP\n• bot rozlicz — podziel koszt sali\n• bot przypomnij — przypomnij teraz\n• bot nie gramy / cofnij odwołanie");
     return;
   }
   if (low.startsWith("admin")) {
@@ -566,6 +566,17 @@ async function handleGroupCommand(text, cfg, mentioned, senderPhone, isFromMe) {
   if (low.startsWith("motywacja") || low.startsWith("motywuj")) {
     const { generateMotivation } = require("./reminder");
     await reply(await generateMotivation(cfg));
+    return;
+  }
+  if (low.startsWith("kalendarz") || low.startsWith("kalendarium") || low.startsWith("calendar")) {
+    const url = cfg.calendarUrl || "https://raw.githubusercontent.com/szemkhel/volley-bot/calendar/calendar.ics";
+    await reply(
+      "📅 Kalendarz treningów\n\n" +
+      "Dodaj go do telefonu — będziesz mieć terminy treningów, a zmiana dnia lub godziny zaktualizuje się automatycznie.\n\n" +
+      "Link do kalendarza:\n" + url + "\n\n" +
+      "• Google Calendar (najłatwiej): wejdź na https://calendar.google.com/calendar/u/0/r/settings/addbyurl , wklej powyższy link i kliknij „Dodaj kalendarz”.\n" +
+      "• iPhone: Ustawienia → Kalendarz → Konta → Dodaj konto → Inne → „Dodaj subskrybowany kalendarz” → wklej link."
+    );
     return;
   }
   if (low.startsWith("mvp")) {
