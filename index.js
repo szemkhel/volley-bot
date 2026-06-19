@@ -16,6 +16,7 @@ const CONTACTS_FILE = path.join(DIR, "contacts.json");
 const HISTORY_FILE = path.join(DIR, "history.json");
 const MVP_FILE = path.join(DIR, "mvp.json");
 const WEEKLOG_FILE = path.join(DIR, "weeklog.json");
+const SUGGEST_FILE = path.join(DIR, "suggestions.json");
 const PHONE = process.env.PHONE || "";
 
 // Separate stats per chat: in TEST mode (groupJid === testGroupJid) the bot reads/writes *.test.json,
@@ -65,6 +66,16 @@ function loadContacts() {
 
 function saveContacts(contacts) {
   fs.writeFileSync(CONTACTS_FILE, JSON.stringify(contacts, null, 2));
+}
+
+// User-submitted suggestions (`bot sugestia ...`) — mode-aware so test ones don't mix with prod
+function loadSuggestions() { try { return JSON.parse(fs.readFileSync(dataFile(SUGGEST_FILE), "utf8")); } catch { return []; } }
+function saveSuggestions(s) { fs.writeFileSync(dataFile(SUGGEST_FILE), JSON.stringify(s, null, 2)); }
+function addSuggestion(author, text) {
+  const s = loadSuggestions();
+  s.push({ author: author, text: text, date: new Date().toISOString().slice(0, 10), ts: Date.now() });
+  if (s.length > 200) s.shift();
+  saveSuggestions(s);
 }
 
 // Persistent rolling log of group chat for the hidden weekly feature-proposal job
@@ -573,7 +584,17 @@ async function handleGroupCommand(text, cfg, mentioned, senderPhone, isFromMe) {
   }
   const low = text.trim().toLowerCase();
   if (low.startsWith("pomoc") || low.startsWith("help")) {
-    await reply("Komendy 🏐\nDla wszystkich:\n• bot status — liczba graczy\n• bot frekwencja — frekwencja i trend\n• bot ranking — obecność graczy\n• bot statystyki @osoba — statystyki gracza\n• bot motywacja — motywacja od bota\n• bot kalendarz — jak dodać kalendarz treningów\nTylko admini 🛡️:\n• bot ankieta piątek 20:00 — nowa ankieta\n• bot zmień dzień/godzinę — zmiana terminu\n• bot mvp — głosowanie MVP\n• bot rozlicz — podziel koszt sali\n• bot koszt sali 160 — ustaw koszt wynajmu\n• bot przypomnij — przypomnij teraz\n• bot nie gramy / cofnij odwołanie");
+    await reply("Komendy 🏐\nDla wszystkich:\n• bot status — liczba graczy\n• bot frekwencja — frekwencja i trend\n• bot ranking — obecność graczy\n• bot statystyki @osoba — statystyki gracza\n• bot motywacja — motywacja od bota\n• bot kalendarz — jak dodać kalendarz treningów\n• bot sugestia <treść> — zaproponuj komendę/funkcję\nTylko admini 🛡️:\n• bot ankieta piątek 20:00 — nowa ankieta\n• bot zmień dzień/godzinę — zmiana terminu\n• bot mvp — głosowanie MVP\n• bot rozlicz — podziel koszt sali\n• bot koszt sali 160 — ustaw koszt wynajmu\n• bot przypomnij — przypomnij teraz\n• bot nie gramy / cofnij odwołanie");
+    return;
+  }
+  if (low.startsWith("sugestia") || low.startsWith("sugestie") || low.startsWith("propozycja") || low.startsWith("pomysł") || low.startsWith("pomysl")) {
+    const body = text.replace(/^\s*(sugestia|sugestie|propozycja|pomys[łl])\b[\s:,-]*/i, "").trim();
+    if (!body) { await reply("Napisz swoją sugestię po komendzie, np. \"bot sugestia dodaj komendę pogoda na trening\". 💡"); return; }
+    const c = loadContacts();
+    const author = isFromMe ? "Organizator" : (c[senderPhone] || ("…" + (senderPhone || "").slice(-4)));
+    addSuggestion(author, body);
+    await reply("Dzięki! 🙌 Zapisałem Twoją sugestię — trafi do przeglądu rozwoju bota.");
+    await notify(sock, cfg, "💡 Nowa sugestia od " + author + ": " + body);
     return;
   }
   if (low.startsWith("admin")) {
@@ -1197,7 +1218,7 @@ function backupData() {
     const day = new Date().toLocaleDateString("en-CA", { timeZone: "Europe/Warsaw" });
     const dest = path.join(dir, day);
     if (!fs.existsSync(dest)) fs.mkdirSync(dest);
-    for (const f of ["state.json", "history.json", "contacts.json", "config.json", "mvp.json", "weeklog.json", "state.test.json", "history.test.json", "mvp.test.json", "weeklog.test.json"]) {
+    for (const f of ["state.json", "history.json", "contacts.json", "config.json", "mvp.json", "weeklog.json", "suggestions.json", "state.test.json", "history.test.json", "mvp.test.json", "weeklog.test.json", "suggestions.test.json"]) {
       const src = path.join(DIR, f);
       if (fs.existsSync(src)) fs.copyFileSync(src, path.join(dest, f));
     }
@@ -1222,17 +1243,24 @@ cron.schedule("0 20 * * 0", async () => {
   const cfg = loadConfig();
   if (!cfg.testGroupJid || !sock) return;
   const recent = weekLog.filter(m => Date.now() - (m.ts || 0) < 7 * 24 * 60 * 60 * 1000);
-  if (!recent.length) { console.log("[FeatureProposals] no group chat this week — skipping"); return; }
+  // Gather user suggestions from both prod and test inboxes
+  let suggestions = [];
+  try { suggestions = suggestions.concat(JSON.parse(fs.readFileSync(SUGGEST_FILE, "utf8"))); } catch {}
+  try { suggestions = suggestions.concat(JSON.parse(fs.readFileSync(SUGGEST_FILE.replace(/\.json$/, ".test.json"), "utf8"))); } catch {}
+  if (!recent.length && !suggestions.length) { console.log("[FeatureProposals] nothing to analyze — skipping"); return; }
   try {
     const { proposeFeatures } = require("./reminder");
-    const text = await proposeFeatures(recent, cfg);
+    const text = await proposeFeatures(recent, suggestions, cfg);
     if (text) {
       await sock.sendMessage(cfg.testGroupJid, { text });
-      console.log("[FeatureProposals] sent to test group (" + recent.length + " msgs analyzed)");
+      console.log("[FeatureProposals] sent (" + recent.length + " msgs, " + suggestions.length + " suggestions)");
     }
   } catch (e) { console.error("[FeatureProposals] error:", e.message); }
   weekLog = recent;
   saveWeekLog(weekLog);
+  // Clear processed suggestion inboxes
+  try { fs.writeFileSync(SUGGEST_FILE, "[]"); } catch {}
+  try { fs.writeFileSync(SUGGEST_FILE.replace(/\.json$/, ".test.json"), "[]"); } catch {}
 }, { timezone: TZ });
 
 // Monday 10:00 — detect game day from recent messages/poll
