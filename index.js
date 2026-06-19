@@ -549,7 +549,10 @@ async function rankingText(cfg) {
       else if (!counts[phone].name) counts[phone].name = contacts[phone] || p.notify || null;
     }
   } catch (e) { console.error("ranking meta error:", e.message); }
-  const rows = Object.keys(counts).map(function (p) { return { phone: p, name: counts[p].name, count: counts[p].count }; });
+  // Skip members with 0 attendance AND no known name (pure noise — silent, never-played LIDs)
+  const rows = Object.keys(counts)
+    .map(function (p) { return { phone: p, name: counts[p].name, count: counts[p].count }; })
+    .filter(function (r) { return r.count > 0 || r.name; });
   if (!rows.length) return "Brak danych do rankingu jeszcze. 🏐";
   rows.sort(function (a, b) { return b.count - a.count; });
   const lines = ["Ranking obecności 🏐"];
@@ -966,6 +969,13 @@ async function connectToWhatsApp() {
     } else if (connection === "open") {
       console.log("WhatsApp connected!");
       console.log("[DBG sock.user]", JSON.stringify(sock.user));
+      // Seed owner's own name into contacts (own messages are fromMe → never cached otherwise)
+      try {
+        if (sock.user && sock.user.name) {
+          const ownerKey = jidNormalizedUser(sock.user.lid || sock.user.id).split("@")[0];
+          if (ownerKey && !contacts[ownerKey]) { contacts[ownerKey] = sock.user.name; saveContacts(contacts); console.log("Seeded owner name:", ownerKey, "->", sock.user.name); }
+        }
+      } catch (e) { console.error("owner seed error:", e.message); }
       if (connDownAt) {
         const mins = Math.round((Date.now() - connDownAt) / 60000);
         connDownAt = null;
