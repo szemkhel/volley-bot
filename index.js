@@ -314,23 +314,35 @@ function archiveCurrentPoll(status) {
   console.log("Archived poll:", status, state.gameDay, "players=" + attendanceFromTally(tally));
 }
 
+// Shared data: last 10 archived games + current in-progress poll → [{date,gameDay,status,players}]
+function frekwencjaEntries() {
+  const entries = loadHistory().slice(-10).map(h => ({ date: h.date, gameDay: h.gameDay, status: h.status, players: h.players || 0 }));
+  if (state.activePoll && !state.cancelled) {
+    const cur = state.activePoll.realPlayers != null ? state.activePoll.realPlayers : attendanceFromTally(voteTally().tally);
+    entries.push({ date: new Date().toISOString().slice(0, 10), gameDay: state.gameDay, status: "wtoku", players: cur });
+  }
+  return entries.slice(-10);
+}
+
 function frekwencjaText() {
   const NL = String.fromCharCode(10);
-  const hist = loadHistory();
-  const last = hist.slice(-10);
-  const lines = [];
-  for (const h of last) {
-    const label = h.status === "cancelled" ? "odwołane" : "grane";
-    lines.push(h.date + " graczy: " + (h.players || 0) + " status: " + label);
-  }
-  if (state.activePoll && !state.cancelled) {
-    const today = new Date().toISOString().slice(0, 10);
-    const t = voteTally();
-    const cur = state.activePoll.realPlayers != null ? state.activePoll.realPlayers : attendanceFromTally(t.tally);
-    lines.push(today + " graczy: " + cur + " status: w toku");
-  }
-  if (!lines.length) return "Brak danych frekwencji jeszcze. 🏐";
+  const entries = frekwencjaEntries();
+  if (!entries.length) return "Brak danych frekwencji jeszcze. 🏐";
+  const lines = entries.map(e => {
+    const label = e.status === "cancelled" ? "odwołane" : (e.status === "wtoku" ? "w toku" : "grane");
+    return e.date + " graczy: " + e.players + " status: " + label;
+  });
   return "Frekwencja 🏐" + NL + lines.join(NL);
+}
+
+// Render the latest chart to a PNG Buffer in-memory (no storage); null if nothing/render fails
+function frekwencjaChart(cfg) {
+  try {
+    const entries = frekwencjaEntries();
+    if (!entries.length) return null;
+    const { renderFrekwencjaChart } = require("./chart");
+    return renderFrekwencjaChart(entries, Number(cfg && cfg.optimumPlayers) || 12);
+  } catch (e) { console.error("frekwencjaChart error:", e.message); return null; }
 }
 
 async function createPoll(cfg, day, time, targetJid) {
@@ -715,7 +727,10 @@ async function handleGroupCommand(text, cfg, mentioned, senderPhone, isFromMe) {
     return;
   }
   if (low.startsWith("frekwencja") || low.startsWith("statystyki")) {
-    await reply(frekwencjaText());
+    const caption = frekwencjaText();
+    const img = frekwencjaChart(cfg);
+    if (img) { await sock.sendMessage(cfg.groupJid, { image: img, caption: BOT_TAG + "\n" + caption }); await notify(sock, cfg, "Komenda z grupy: frekwencja (z wykresem)"); }
+    else await reply(caption);
     return;
   }
   const cmd = await interpretCommand(text, state, cfg);
@@ -830,7 +845,10 @@ async function handleOwnerCommand(text, cfg) {
     return;
   }
   if (low.startsWith("frekwencja") || low.startsWith("statystyki")) {
-    await notify(sock, cfg, frekwencjaText());
+    const img = frekwencjaChart(cfg);
+    const dest = process.env.NOTIFY_JID || cfg.notifyJid;
+    if (img && dest) await sock.sendMessage(dest, { image: img, caption: "🤖 " + frekwencjaText() });
+    else await notify(sock, cfg, frekwencjaText());
     return;
   }
   const cmd = await interpretCommand(text, state, cfg);
