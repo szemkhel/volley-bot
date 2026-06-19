@@ -1242,11 +1242,12 @@ cron.schedule("0 21 * * 0", () => {
 cron.schedule("0 20 * * 0", async () => {
   const cfg = loadConfig();
   if (!cfg.testGroupJid || !sock) return;
-  const recent = weekLog.filter(m => Date.now() - (m.ts || 0) < 7 * 24 * 60 * 60 * 1000);
-  // Gather user suggestions from both prod and test inboxes
+  // Production data ONLY (read files directly, not in-memory weekLog which may be test-mode's)
+  let prodLog = [];
+  try { prodLog = JSON.parse(fs.readFileSync(WEEKLOG_FILE, "utf8")); } catch {}
+  const recent = prodLog.filter(m => Date.now() - (m.ts || 0) < 7 * 24 * 60 * 60 * 1000);
   let suggestions = [];
-  try { suggestions = suggestions.concat(JSON.parse(fs.readFileSync(SUGGEST_FILE, "utf8"))); } catch {}
-  try { suggestions = suggestions.concat(JSON.parse(fs.readFileSync(SUGGEST_FILE.replace(/\.json$/, ".test.json"), "utf8"))); } catch {}
+  try { suggestions = JSON.parse(fs.readFileSync(SUGGEST_FILE, "utf8")); } catch {}
   if (!recent.length && !suggestions.length) { console.log("[FeatureProposals] nothing to analyze — skipping"); return; }
   try {
     const { proposeFeatures } = require("./reminder");
@@ -1256,11 +1257,10 @@ cron.schedule("0 20 * * 0", async () => {
       console.log("[FeatureProposals] sent (" + recent.length + " msgs, " + suggestions.length + " suggestions)");
     }
   } catch (e) { console.error("[FeatureProposals] error:", e.message); }
-  weekLog = recent;
-  saveWeekLog(weekLog);
-  // Clear processed suggestion inboxes
+  // Prune the production week-log + clear the processed production suggestion inbox
+  try { fs.writeFileSync(WEEKLOG_FILE, JSON.stringify(recent, null, 2)); } catch {}
+  if (!testMode) weekLog = recent;
   try { fs.writeFileSync(SUGGEST_FILE, "[]"); } catch {}
-  try { fs.writeFileSync(SUGGEST_FILE.replace(/\.json$/, ".test.json"), "[]"); } catch {}
 }, { timezone: TZ });
 
 // Monday 10:00 — detect game day from recent messages/poll
