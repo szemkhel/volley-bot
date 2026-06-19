@@ -293,4 +293,35 @@ async function proposeFeatures(messages, config) {
   }
 }
 
-module.exports = { sendReminder, generateReminder, detectGameDay, analyzeGameResponse, interpretCommand, generateMotivation, generateMvpCongrats, proposeFeatures, DAY_NAMES_PL_ACC };
+// Extract real player count from a manual cost-split message (e.g. "po 14,55zł (160/11)... BLIK")
+async function extractSettlement(text, hallCost, config) {
+  try {
+    const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY || config.anthropicApiKey });
+    const resp = await client.messages.create({
+      model: CLASSIFY_MODEL,
+      max_tokens: 90,
+      messages: [{
+        role: "user",
+        content: `Wiadomość z grupy siatkarskiej: "${text}"\n\n` +
+          `Czy to rozliczenie kosztu wynajmu sali po treningu (podział kwoty między graczy, zwykle z prośbą o BLIK)? ` +
+          `Pomocniczo: stały koszt sali to ${hallCost} zł.\n` +
+          `Odpowiedz TYLKO w JSON, bez wyjaśnień: {"isSettlement": true/false, "people": liczba_lub_null, "total": kwota_calkowita_lub_null, "perPerson": kwota_na_osobe_lub_null}. ` +
+          `"people" = na ile osób podzielono koszt (dzielnik, np. z "160/11" to 11). Jeśli czegoś nie ma w wiadomości, daj null.`
+      }]
+    });
+    const m = resp.content[0].text.trim().match(/\{[\s\S]*\}/);
+    if (!m) return null;
+    const j = JSON.parse(m[0]);
+    return {
+      isSettlement: j.isSettlement === true,
+      people: typeof j.people === "number" ? j.people : null,
+      total: typeof j.total === "number" ? j.total : null,
+      perPerson: typeof j.perPerson === "number" ? j.perPerson : null,
+    };
+  } catch (err) {
+    console.error("extractSettlement error:", err.message);
+    return null;
+  }
+}
+
+module.exports = { sendReminder, generateReminder, detectGameDay, analyzeGameResponse, interpretCommand, generateMotivation, generateMvpCongrats, proposeFeatures, extractSettlement, DAY_NAMES_PL_ACC };

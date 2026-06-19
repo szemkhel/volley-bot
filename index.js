@@ -7,7 +7,7 @@ const path = require("path");
 const cron = require("node-cron");
 const http = require("http");
 const { notify } = require("./notify");
-const { DAY_WORDS, attendanceFromTally, weightOfOptions, parseAnkieta, nextDateForDay, isAdmin } = require("./lib");
+const { DAY_WORDS, attendanceFromTally, weightOfOptions, parseAnkieta, nextDateForDay, isAdmin, settlementPeople } = require("./lib");
 
 const DIR = __dirname;
 const STATE_FILE = path.join(DIR, "state.json");
@@ -379,10 +379,74 @@ function setRealPlayers(n) {
     return;
   }
   const hist = loadHistory();
+  const today = new Date().toLocaleDateString("en-CA", { timeZone: "Europe/Warsaw" });
   for (let i = hist.length - 1; i >= 0; i--) {
-    if (hist[i].status !== "cancelled") { hist[i].players = n; hist[i].realPlayers = n; break; }
+    if (hist[i].status === "cancelled") continue;
+    const age = Date.now() - new Date((hist[i].date || today) + "T12:00:00").getTime();
+    if (age < 3 * 24 * 60 * 60 * 1000) { hist[i].players = n; hist[i].realPlayers = n; saveHistory(hist); return; }
+    break; // most recent non-cancelled game is too old — fall through to create a fresh entry
   }
+  // No recent game on record → create a "played" entry (e.g. played without a poll)
+  hist.push({ date: today, gameDay: state.gameDay, gameTime: null, question: "rozliczenie", status: "played", voted: 0, tally: {}, attendees: [], players: n, realPlayers: n });
+  if (hist.length > 200) hist.shift();
   saveHistory(hist);
+}
+
+function getCurrentPlayerCount() {
+  if (state.activePoll) {
+    return state.activePoll.realPlayers != null ? state.activePoll.realPlayers : attendanceFromTally(voteTally().tally);
+  }
+  const hist = loadHistory();
+  for (let i = hist.length - 1; i >= 0; i--) {
+    if (hist[i].status === "cancelled") continue;
+    const age = Date.now() - new Date((hist[i].date) + "T12:00:00").getTime();
+    if (age < 3 * 24 * 60 * 60 * 1000) return hist[i].players != null ? hist[i].players : 0;
+    break;
+  }
+  return null;
+}
+
+async function detectSettlement(text, authorPhone, cfg) {
+  if (!/\d/.test(text) || !/(z[łl]\b|zlotych|pln|blik)/i.test(text)) return;
+  const hallCost = Number(cfg.hallCost) || 160;
+  const { extractSettlement } = require("./reminder");
+  const info = await extractSettlement(text, hallCost, cfg);
+  if (!info || !info.isSettlement) return;
+  const people = settlementPeople(info, hallCost);
+  if (!people || people < 2 || people > 50) return;
+  const current = getCurrentPlayerCount();
+  console.log("[Settlement] detected people=" + people + " current=" + current);
+  if (current != null && current === people) {
+    setRealPlayers(people);
+    await sock.sendMessage(cfg.groupJid, { text: "📊 Zapisuję liczbę graczy z rozliczenia: " + people + ". 🏐" });
+    await notify(sock, cfg, "Rozliczenie wykryte: " + people + " graczy (zgodne z zapisem).");
+    return;
+  }
+  state.pendingPlayerUpdate = { detected: people, current: current, authorPhone: authorPhone, ts: Date.now() };
+  saveState(state);
+  await sock.sendMessage(cfg.groupJid, { text: "📊 Z rozliczenia wychodzi " + people + " graczy" + (current != null ? " (u mnie zapisane: " + current + ")" : "") + ". Zaktualizować liczbę graczy na " + people + "? Napisz tak/nie." });
+}
+
+async function handlePlayerUpdateAnswer(text, senderPhone, isFromMe, cfg) {
+  const p = state.pendingPlayerUpdate;
+  if (!p) return false;
+  if (Date.now() - (p.ts || 0) > 30 * 60 * 1000) { state.pendingPlayerUpdate = null; saveState(state); return false; }
+  const low = (text || "").trim().toLowerCase();
+  const yes = /^(tak|t|ok|aktualizuj|zaktualizuj|potwierdzam)\b/.test(low);
+  const no = /^(nie|n|zostaw|anuluj)\b/.test(low);
+  if (!yes && !no) return false;
+  const allowed = (senderPhone && senderPhone === p.authorPhone) || isAdmin(senderPhone, isFromMe, cfg.admins || [], (cfg.notifyLid || "").split("@")[0]);
+  if (!allowed) return false;
+  if (yes) {
+    setRealPlayers(p.detected);
+    state.pendingPlayerUpdate = null; saveState(state);
+    await sock.sendMessage(cfg.groupJid, { text: "✅ Zaktualizowano liczbę graczy na " + p.detected + ". 🏐" });
+    await notify(sock, cfg, "Liczba graczy zaktualizowana z rozliczenia na " + p.detected + ".");
+  } else {
+    state.pendingPlayerUpdate = null; saveState(state);
+    await sock.sendMessage(cfg.groupJid, { text: "Ok, zostawiam " + (p.current != null ? p.current : "obecną liczbę") + " graczy." });
+  }
+  return true;
 }
 
 async function doSettlement(cfg, cost, people) {
@@ -497,7 +561,7 @@ async function handleGroupCommand(text, cfg, mentioned, senderPhone, isFromMe) {
   }
   const low = text.trim().toLowerCase();
   if (low.startsWith("pomoc") || low.startsWith("help")) {
-    await reply("Komendy 🏐\nDla wszystkich:\n• bot status — liczba graczy\n• bot frekwencja — frekwencja i trend\n• bot ranking — obecność graczy\n• bot statystyki @osoba — statystyki gracza\n• bot motywacja — motywacja od bota\n• bot kalendarz — jak dodać kalendarz treningów\nTylko admini 🛡️:\n• bot ankieta piątek 20:00 — nowa ankieta\n• bot zmień dzień/godzinę — zmiana terminu\n• bot mvp — głosowanie MVP\n• bot rozlicz — podziel koszt sali\n• bot przypomnij — przypomnij teraz\n• bot nie gramy / cofnij odwołanie");
+    await reply("Komendy 🏐\nDla wszystkich:\n• bot status — liczba graczy\n• bot frekwencja — frekwencja i trend\n• bot ranking — obecność graczy\n• bot statystyki @osoba — statystyki gracza\n• bot motywacja — motywacja od bota\n• bot kalendarz — jak dodać kalendarz treningów\nTylko admini 🛡️:\n• bot ankieta piątek 20:00 — nowa ankieta\n• bot zmień dzień/godzinę — zmiana terminu\n• bot mvp — głosowanie MVP\n• bot rozlicz — podziel koszt sali\n• bot koszt sali 160 — ustaw koszt wynajmu\n• bot przypomnij — przypomnij teraz\n• bot nie gramy / cofnij odwołanie");
     return;
   }
   if (low.startsWith("admin")) {
@@ -577,6 +641,15 @@ async function handleGroupCommand(text, cfg, mentioned, senderPhone, isFromMe) {
       "• Google Calendar (najłatwiej): wejdź na https://calendar.google.com/calendar/u/0/r/settings/addbyurl , wklej powyższy link i kliknij „Dodaj kalendarz”.\n" +
       "• iPhone: Ustawienia → Kalendarz → Konta → Dodaj konto → Inne → „Dodaj subskrybowany kalendarz” → wklej link."
     );
+    return;
+  }
+  if (low.startsWith("koszt")) {
+    const n = (text.match(/\d+([.,]\d+)?/) || [])[0];
+    if (!n) { await reply("Koszt sali: " + (cfg.hallCost || 160) + " zł.\nAby zmienić (admin): bot koszt sali 160"); return; }
+    if (await denyIfNotAdmin()) return;
+    cfg.hallCost = parseFloat(n.replace(",", "."));
+    saveConfig(cfg);
+    await reply("Ustawiono koszt sali na " + cfg.hallCost + " zł. 🏐");
     return;
   }
   if (low.startsWith("mvp")) {
@@ -919,6 +992,18 @@ async function connectToWhatsApp() {
           const wjid = msg.key.participant || msg.key.remoteJid;
           const wname = msg.key.fromMe ? "Ja (organizator)" : (contacts[wjid?.split("@")[0]] || msg.pushName || wjid?.split("@")[0]);
           appendWeekLog({ sender: wname, text: wtext, ts: Date.now() });
+        }
+      }
+
+      // Settlement monitor: manual cost-split messages → real player count (incl. owner; before fromMe skip)
+      if (cfg.groupJid && msg.key.remoteJid === cfg.groupJid) {
+        const stext = msg.message.conversation || msg.message.extendedTextMessage?.text;
+        if (stext && stext.indexOf(BOT_TAG) !== 0 && !stext.startsWith("🤖") && !stext.startsWith("💰") && !/^bot\b/i.test(stext.trim()) && !seen("money:" + msg.key.id)) {
+          const aPhone = (msg.key.participant || msg.key.remoteJid || "").split("@")[0];
+          let consumed = false;
+          if (state.pendingPlayerUpdate) consumed = await handlePlayerUpdateAnswer(stext, aPhone, !!msg.key.fromMe, cfg);
+          if (consumed) continue;
+          await detectSettlement(stext, aPhone, cfg);
         }
       }
 

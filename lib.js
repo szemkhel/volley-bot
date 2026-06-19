@@ -65,4 +65,13 @@ function isAdmin(senderPhone, isFromMe, admins, ownerLidPhone) {
   return (admins || []).indexOf(senderPhone) >= 0;
 }
 
-module.exports = { DAY_WORDS, attendanceFromTally, weightOfOptions, parseAnkieta, nextDateForDay, isAdmin };
+// From an extracted settlement {people,total,perPerson} + static hallCost → real player count (the divisor)
+function settlementPeople(info, hallCost) {
+  if (!info) return null;
+  if (typeof info.people === "number" && info.people > 0) return Math.round(info.people);
+  if (info.total > 0 && info.perPerson > 0) return Math.round(info.total / info.perPerson);
+  if (info.perPerson > 0 && hallCost > 0) return Math.round(hallCost / info.perPerson);
+  return null;
+}
+
+module.exports = { DAY_WORDS, attendanceFromTally, weightOfOptions, parseAnkieta, nextDateForDay, isAdmin, settlementPeople };

@@ -1,6 +1,6 @@
 const test = require("node:test");
 const assert = require("node:assert");
-const { attendanceFromTally, weightOfOptions, parseAnkieta, nextDateForDay, isAdmin } = require("../lib");
+const { attendanceFromTally, weightOfOptions, parseAnkieta, nextDateForDay, isAdmin, settlementPeople } = require("../lib");
 
 test("attendanceFromTally: Gram counts as 1 each", () => {
   assert.strictEqual(attendanceFromTally({ "Gram": 3 }), 3);
@@ -80,4 +80,22 @@ test("isAdmin: listed admin allowed", () => {
 test("isAdmin: non-admin denied", () => {
   assert.strictEqual(isAdmin("888", false, ["555"], "111"), false);
   assert.strictEqual(isAdmin("", false, ["555"], "111"), false);
+});
+
+test("settlementPeople: explicit people wins", () => {
+  assert.strictEqual(settlementPeople({ people: 11, total: 160, perPerson: 14.55 }, 160), 11);
+});
+
+test("settlementPeople: from total/perPerson", () => {
+  assert.strictEqual(settlementPeople({ people: null, total: 160, perPerson: 14.55 }, 999), 11);
+});
+
+test("settlementPeople: back-calc from hallCost/perPerson", () => {
+  assert.strictEqual(settlementPeople({ people: null, total: null, perPerson: 14.55 }, 160), 11);
+  assert.strictEqual(settlementPeople({ people: null, perPerson: 20 }, 160), 8);
+});
+
+test("settlementPeople: nothing usable → null", () => {
+  assert.strictEqual(settlementPeople({ people: null, total: null, perPerson: null }, 160), null);
+  assert.strictEqual(settlementPeople(null, 160), null);
 });

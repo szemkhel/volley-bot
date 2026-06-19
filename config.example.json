@@ -10,5 +10,6 @@
   "blikNumber": "+48 000 000 000",
   "defaultDay": "friday",
   "defaultTime": "20:00",
-  "calendarPort": 3000
+  "calendarPort": 3000,
+  "hallCost": 160
 }
