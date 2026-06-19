@@ -1,7 +1,8 @@
 // Renders an attendance bar chart (last N games) to a PNG Buffer — no AI, no storage.
 // Lazy-requires @napi-rs/canvas so unit tests / non-chart code don't need the native dep loaded.
 
-const DAY_ABBR_PL = { friday: "pt", thursday: "czw", wednesday: "śr", saturday: "sb", sunday: "nd", monday: "pn", tuesday: "wt" };
+// "2026-06-19" -> "19-06"
+function ddmm(date) { const p = (date || "").split("-"); return p.length === 3 ? p[2] + "-" + p[1] : (date || ""); }
 
 // entries: [{date, gameDay, status, players}], optimum: number (dotted line)
 function renderFrekwencjaChart(entries, optimum) {
@@ -45,23 +46,16 @@ function renderFrekwencjaChart(entries, optimum) {
     const cx = x0 + slot * (i + 0.5);
     const cancelled = d.status === "cancelled";
     const val = d.players || 0;
-    const h = (val / maxVal) * plotH;
-    if (cancelled) {
-      ctx.fillStyle = "#cfd8dc";
-      ctx.fillRect(cx - bw / 2, y0 - Math.max(h, 3), bw, Math.max(h, 3));
-    } else {
-      ctx.fillStyle = val >= opt ? "#2e7d32" : (val >= opt - 3 ? "#f9a825" : "#c62828");
-      ctx.fillRect(cx - bw / 2, y0 - h, bw, h);
-    }
-    // value above bar
-    ctx.fillStyle = "#37474f"; ctx.font = "bold 14px sans-serif";
-    ctx.fillText(cancelled ? "ODW" : String(val), cx, y0 - (cancelled ? Math.max(h, 3) : h) - 6);
-    // x label: day + dd.mm
-    ctx.fillStyle = "#607d8b"; ctx.font = "12px sans-serif";
-    const dpl = DAY_ABBR_PL[d.gameDay] || "";
-    const dm = (d.date || "").slice(5).replace("-", ".");
-    ctx.fillText(dpl, cx, y0 + 18);
-    ctx.fillText(dm, cx, y0 + 34);
+    const h = Math.max((val / maxVal) * plotH, 3);
+    // red = trening odwołany, zielony = graliśmy
+    ctx.fillStyle = cancelled ? "#c62828" : "#2e7d32";
+    ctx.fillRect(cx - bw / 2, y0 - h, bw, h);
+    // liczba graczy nad słupkiem
+    ctx.fillStyle = "#37474f"; ctx.font = "bold 15px sans-serif";
+    ctx.fillText(String(val), cx, y0 - h - 7);
+    // data dd-mm pod słupkiem
+    ctx.fillStyle = "#607d8b"; ctx.font = "13px sans-serif";
+    ctx.fillText(ddmm(d.date), cx, y0 + 20);
   });
 
   // optimum dotted line (on top)
@@ -69,8 +63,8 @@ function renderFrekwencjaChart(entries, optimum) {
   ctx.strokeStyle = "#1565c0"; ctx.setLineDash([8, 5]); ctx.lineWidth = 2;
   ctx.beginPath(); ctx.moveTo(x0, yOpt); ctx.lineTo(x0 + plotW, yOpt); ctx.stroke();
   ctx.setLineDash([]);
-  ctx.fillStyle = "#1565c0"; ctx.font = "bold 13px sans-serif"; ctx.textAlign = "left";
-  ctx.fillText("optimum " + opt, x0 + 4, yOpt - 6);
+  ctx.fillStyle = "#1565c0"; ctx.font = "bold 14px sans-serif"; ctx.textAlign = "right";
+  ctx.fillText("optimum " + opt + " graczy", x0 + plotW, yOpt - 7);
 
   // axis baseline
   ctx.strokeStyle = "#b0bec5"; ctx.lineWidth = 1;
