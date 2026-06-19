@@ -18,16 +18,26 @@ const MVP_FILE = path.join(DIR, "mvp.json");
 const WEEKLOG_FILE = path.join(DIR, "weeklog.json");
 const PHONE = process.env.PHONE || "";
 
+// Separate stats per chat: in TEST mode (groupJid === testGroupJid) the bot reads/writes *.test.json,
+// so testing never pollutes production stats. contacts/config stay shared; calendar = production only.
+function isTestMode() {
+  try { const c = JSON.parse(fs.readFileSync(CONFIG_FILE, "utf8")); return !!(c.groupJid && c.testGroupJid && c.groupJid === c.testGroupJid); }
+  catch { return false; }
+}
+let testMode = isTestMode();
+function dataFile(base) { return testMode ? base.replace(/\.json$/, ".test.json") : base; }
+
 function loadState() {
-  if (fs.existsSync(STATE_FILE)) {
-    try { return JSON.parse(fs.readFileSync(STATE_FILE, "utf8")); }
+  const f = dataFile(STATE_FILE);
+  if (fs.existsSync(f)) {
+    try { return JSON.parse(fs.readFileSync(f, "utf8")); }
     catch { return { activePoll: null, voters: {}, gameDay: "friday", askedAboutGame: false }; }
   }
   return { activePoll: null, voters: {}, gameDay: "friday", askedAboutGame: false };
 }
 
 function saveState(state) {
-  fs.writeFileSync(STATE_FILE, JSON.stringify(state, null, 2));
+  fs.writeFileSync(dataFile(STATE_FILE), JSON.stringify(state, null, 2));
 }
 
 function loadConfig() {
@@ -58,8 +68,8 @@ function saveContacts(contacts) {
 }
 
 // Persistent rolling log of group chat for the hidden weekly feature-proposal job
-function loadWeekLog() { try { return JSON.parse(fs.readFileSync(WEEKLOG_FILE, "utf8")); } catch { return []; } }
-function saveWeekLog(l) { fs.writeFileSync(WEEKLOG_FILE, JSON.stringify(l, null, 2)); }
+function loadWeekLog() { try { return JSON.parse(fs.readFileSync(dataFile(WEEKLOG_FILE), "utf8")); } catch { return []; } }
+function saveWeekLog(l) { fs.writeFileSync(dataFile(WEEKLOG_FILE), JSON.stringify(l, null, 2)); }
 function appendWeekLog(entry) {
   weekLog.push(entry);
   const cutoff = Date.now() - 8 * 24 * 60 * 60 * 1000;
@@ -130,8 +140,8 @@ async function recordVote(pollUpdate, voterJid) {
   console.log("Vote recorded:", phone, options.length ? "-> " + options.join(", ") : "(empty/retracted)");
 }
 
-function loadMvp() { try { return JSON.parse(fs.readFileSync(MVP_FILE, "utf8")); } catch { return []; } }
-function saveMvp(m) { fs.writeFileSync(MVP_FILE, JSON.stringify(m, null, 2)); }
+function loadMvp() { try { return JSON.parse(fs.readFileSync(dataFile(MVP_FILE), "utf8")); } catch { return []; } }
+function saveMvp(m) { fs.writeFileSync(dataFile(MVP_FILE), JSON.stringify(m, null, 2)); }
 
 async function recordMvpVote(pollUpdate, voterJid) {
   if (!state.mvpPoll || !pollUpdate) return;
@@ -261,8 +271,10 @@ function archiveIfGamePassed(strict) {
 
 const POLL_OPTIONS = ["Gram", "Nie gram", "Nie wiem", "Gram i przyprowadzam +1", "Gram i przyprowadzam +2"];
 
-function loadHistory() { try { return JSON.parse(fs.readFileSync(HISTORY_FILE, "utf8")); } catch { return []; } }
-function saveHistory(h) { fs.writeFileSync(HISTORY_FILE, JSON.stringify(h, null, 2)); }
+function loadHistory() { try { return JSON.parse(fs.readFileSync(dataFile(HISTORY_FILE), "utf8")); } catch { return []; } }
+function saveHistory(h) { fs.writeFileSync(dataFile(HISTORY_FILE), JSON.stringify(h, null, 2)); }
+// Production history (calendar must reflect production regardless of mode)
+function loadProdHistory() { try { return JSON.parse(fs.readFileSync(HISTORY_FILE, "utf8")); } catch { return []; } }
 
 function archiveCurrentPoll(status) {
   if (!state.activePoll) return;
@@ -725,12 +737,18 @@ async function handleOwnerCommand(text, cfg) {
   if (low === "test on" || low === "test" || low === "tryb testowy") {
     if (!cfg.testGroupJid) { await notify(sock, cfg, "Brak grupy testowej (testGroupJid)."); return; }
     if (cfg.groupJid !== cfg.testGroupJid) { cfg.realGroupJid = cfg.groupJid; cfg.groupJid = cfg.testGroupJid; saveConfig(cfg); }
-    await notify(sock, cfg, "🧪 TRYB TESTOWY włączony — agent działa na grupie testowej.");
+    testMode = true;
+    state = loadState(); weekLog = loadWeekLog();
+    scheduleReminders(sock, state, saveState, cfg, state.gameDay);
+    await notify(sock, cfg, "🧪 TRYB TESTOWY włączony — osobne statystyki (*.test.json).");
     return;
   }
   if (low === "test off" || low === "produkcja" || low === "prod") {
     if (cfg.realGroupJid) { cfg.groupJid = cfg.realGroupJid; saveConfig(cfg); }
-    await notify(sock, cfg, "✅ Tryb PRODUKCYJNY — agent działa na prawdziwej grupie.");
+    testMode = false;
+    state = loadState(); weekLog = loadWeekLog();
+    scheduleReminders(sock, state, saveState, cfg, state.gameDay);
+    await notify(sock, cfg, "✅ Tryb PRODUKCYJNY — statystyki produkcyjne.");
     return;
   }
   if (low.startsWith("pomoc") || low.startsWith("help")) {
@@ -1142,12 +1160,12 @@ function writeCalendar(cfg) {
     const CRLF = "\r\n";
     const out = ["BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//VolleyBot//PL", "CALSCALE:GREGORIAN", "METHOD:PUBLISH", "X-WR-CALNAME:Siatkówka 🏐", "X-WR-TIMEZONE:Europe/Warsaw"];
     const events = {};
-    const hist = loadHistory();
+    const hist = loadProdHistory(); // calendar always reflects production, never test data
     for (const h of hist) {
       if (h.status === "cancelled" || !h.date) continue;
       events[h.date] = { date: h.date, time: h.gameTime || cfg.defaultTime || "20:00" };
     }
-    if (state.activePoll && !state.cancelled && state.activePoll.gameDate) {
+    if (!testMode && state.activePoll && !state.cancelled && state.activePoll.gameDate) {
       events[state.activePoll.gameDate] = { date: state.activePoll.gameDate, time: state.activePoll.gameTime || cfg.defaultTime || "20:00" };
     }
     const stamp = new Date().toISOString().replace(/[-:]/g, "").split(".")[0] + "Z";
@@ -1179,7 +1197,7 @@ function backupData() {
     const day = new Date().toLocaleDateString("en-CA", { timeZone: "Europe/Warsaw" });
     const dest = path.join(dir, day);
     if (!fs.existsSync(dest)) fs.mkdirSync(dest);
-    for (const f of ["state.json", "history.json", "contacts.json", "config.json", "mvp.json", "weeklog.json"]) {
+    for (const f of ["state.json", "history.json", "contacts.json", "config.json", "mvp.json", "weeklog.json", "state.test.json", "history.test.json", "mvp.test.json", "weeklog.test.json"]) {
       const src = path.join(DIR, f);
       if (fs.existsSync(src)) fs.copyFileSync(src, path.join(dest, f));
     }
