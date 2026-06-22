@@ -44,7 +44,7 @@ Wszystkie komendy piszesz **na grupie**, zaczynając od słowa **`bot`**.
 - `bot pomoc` — pełna lista komend
 
 ## 🤖 Co bot robi automatycznie
-- **Poniedziałek 8:00** — wystawia ankietę na najbliższy trening (domyślnie piątek 20:00)
+- **Poniedziałek 10:00** — wystawia ankietę na najbliższy trening (domyślnie piątek 20:00)
 - **Przypomnienia** — wtorek 18:00 (pierwsze) i środa 17:00 (ostatnie) dla piątkowego treningu; terminy przesuwają się, gdy gramy w inny dzień
 - **Wtorek 12:00** — jeśli nie ma ankiety, pyta grupę czy gramy
 - **Po treningu** — automatycznie zapisuje frekwencję
