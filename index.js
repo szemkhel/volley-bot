@@ -1333,8 +1333,8 @@ cron.schedule("0 12 * * 2", async () => {
 // Daily 23:00 — archive the game on its day as "played", stop reminders
 cron.schedule("0 23 * * *", () => { archiveIfGamePassed(false); }, { timezone: TZ });
 
-// Monday 08:00 — auto-post the weekly poll (default day/time) if none exists yet
-cron.schedule("0 8 * * 1", async () => {
+// Monday 10:00 — auto-post the weekly poll (default day/time) if none exists yet
+cron.schedule("0 10 * * 1", async () => {
   const cfg = loadConfig();
   if (!cfg.groupJid || !sock) return;
   if (pollIsRecent(state.activePoll) && !state.cancelled) {
