@@ -74,4 +74,11 @@ function settlementPeople(info, hallCost) {
   return null;
 }
 
-module.exports = { DAY_WORDS, attendanceFromTally, weightOfOptions, parseAnkieta, nextDateForDay, isAdmin, settlementPeople };
+// Pick the poll matching a day (and optionally exact time) from a list. Returns the poll or null.
+function matchPoll(polls, day, time) {
+  let cand = (polls || []).filter(p => p.gameDay === day);
+  if (time) cand = cand.filter(p => p.gameTime === time);
+  return cand[0] || null;
+}
+
+module.exports = { DAY_WORDS, attendanceFromTally, weightOfOptions, parseAnkieta, nextDateForDay, isAdmin, settlementPeople, matchPoll };

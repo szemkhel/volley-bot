@@ -147,9 +147,10 @@ function fallback(nonVoters, contacts = {}, dayPl = "piątek") {
   return t.replace("{mentions}", mentions).replace("{day}", dayPl);
 }
 
-async function sendReminder(sock, state, config, isUrgent, gameDay) {
-  if (!state.activePoll) {
-    console.log("No active poll. Skipping reminder.");
+// poll = a single tracked poll object { voters, gameDay, gameTime, ... }
+async function sendReminder(sock, poll, config, isUrgent) {
+  if (!poll) {
+    console.log("No poll. Skipping reminder.");
     return { skipped: "no active poll" };
   }
   if (!config.groupJid) {
@@ -166,14 +167,15 @@ async function sendReminder(sock, state, config, isUrgent, gameDay) {
       name: p.notify || contacts[p.id.split("@")[0]] || null,
     }));
 
-    const nonVoters = participants.filter(p => !state.voters[p.phone]);
+    const voters = poll.voters || {};
+    const nonVoters = participants.filter(p => !voters[p.phone]);
 
     if (nonVoters.length === 0) {
       console.log("Everyone voted! No reminder needed.");
       return { everyoneVoted: true };
     }
 
-    const day = gameDay || state.gameDay || "friday";
+    const day = poll.gameDay || "friday";
     console.log("Sending reminder to", nonVoters.length, "non-voters (game day:", day + ")...");
     let text = await generateReminder(nonVoters, config, isUrgent, day);
 
