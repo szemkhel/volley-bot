@@ -7,7 +7,7 @@ const path = require("path");
 const cron = require("node-cron");
 const http = require("http");
 const { notify } = require("./notify");
-const { DAY_WORDS, attendanceFromTally, weightOfOptions, parseAnkieta, nextDateForDay, isAdmin, settlementPeople } = require("./lib");
+const { DAY_WORDS, attendanceFromTally, weightOfOptions, parseAnkieta, nextDateForDay, isAdmin, settlementPeople, matchPoll } = require("./lib");
 
 const DIR = __dirname;
 const STATE_FILE = path.join(DIR, "state.json");
@@ -30,11 +30,28 @@ function dataFile(base) { return testMode ? base.replace(/\.json$/, ".test.json"
 
 function loadState() {
   const f = dataFile(STATE_FILE);
+  let s = { polls: [], gameDay: "friday", askedAboutGame: false };
   if (fs.existsSync(f)) {
-    try { return JSON.parse(fs.readFileSync(f, "utf8")); }
-    catch { return { activePoll: null, voters: {}, gameDay: "friday", askedAboutGame: false }; }
+    try { s = JSON.parse(fs.readFileSync(f, "utf8")); } catch { s = { polls: [], gameDay: "friday", askedAboutGame: false }; }
   }
-  return { activePoll: null, voters: {}, gameDay: "friday", askedAboutGame: false };
+  return migrateState(s);
+}
+
+// Multi-poll model: state.polls = [ poll, ... ]; each poll has its own voters/gameDay/gameDate/gameTime.
+// Migrate the old single-poll shape (activePoll + top-level voters/cancelled) into polls[].
+function migrateState(s) {
+  if (!Array.isArray(s.polls)) {
+    s.polls = [];
+    if (s.activePoll && !s.cancelled) {
+      s.activePoll.voters = s.voters || {};
+      if (!s.activePoll.gameDay) s.activePoll.gameDay = s.gameDay || "friday";
+      s.polls.push(s.activePoll);
+    }
+  }
+  for (const p of s.polls) { if (!p.voters) p.voters = {}; if (!p.gameDay) p.gameDay = s.gameDay || "friday"; }
+  delete s.activePoll; delete s.voters; delete s.cancelled;
+  if (!s.gameDay) s.gameDay = "friday";
+  return s;
 }
 
 function saveState(state) {
@@ -103,16 +120,32 @@ let reminderScheduled = false;
 let connDownAt = null;
 
 
-function voteTally() {
+// --- Multi-poll helpers ---
+function tallyOf(poll) {
   const tally = {};
   let voted = 0;
-  for (const k in (state.voters || {})) {
+  const voters = (poll && poll.voters) || {};
+  for (const k in voters) {
     voted++;
-    const opts = (state.voters[k] && state.voters[k].options) || [];
+    const opts = (voters[k] && voters[k].options) || [];
     for (const o of opts) tally[o] = (tally[o] || 0) + 1;
   }
   return { voted, tally };
 }
+function attendanceOf(poll) {
+  if (!poll) return 0;
+  return poll.realPlayers != null ? poll.realPlayers : attendanceFromTally(tallyOf(poll).tally);
+}
+function activePolls() { return (state.polls || []); }
+function pollsForDay(day) { return activePolls().filter(p => p.gameDay === day); }
+function findPoll(day, time) { return matchPoll(activePolls(), day, time); }
+// Settlement / "current" target: most recent active poll (by gameDate/timestamp), else null
+function primaryPoll() {
+  const ps = activePolls();
+  if (!ps.length) return null;
+  return ps.slice().sort((a, b) => (b.gameDate || "").localeCompare(a.gameDate || "") || (b.timestamp || 0) - (a.timestamp || 0))[0];
+}
+function removePoll(poll) { state.polls = activePolls().filter(p => p !== poll); }
 
 const processedCmds = new Set();
 function seen(id) {
@@ -124,14 +157,15 @@ function seen(id) {
 }
 
 async function recordVote(pollUpdate, voterJid) {
-  if (!state.activePoll || !pollUpdate) return;
+  if (!pollUpdate || !voterJid) return;
   const pollKey = pollUpdate.pollCreationMessageKey;
-  if (pollKey && pollKey.id && pollKey.id !== state.activePoll.messageKey.id) return;
-  if (!voterJid) return;
+  if (!pollKey || !pollKey.id) return;
+  // Route the vote to whichever tracked poll it belongs to
+  const poll = activePolls().find(p => p.messageKey && p.messageKey.id === pollKey.id);
+  if (!poll) return;
   const phone = voterJid.split("@")[0];
   let options = [];
   try {
-    const poll = state.activePoll;
     if (poll.encKeyB64 && pollUpdate.vote) {
       const meta = decryptPollVote(pollUpdate.vote, {
         pollCreatorJid: poll.pollCreatorJid,
@@ -145,10 +179,11 @@ async function recordVote(pollUpdate, voterJid) {
   } catch (e) {
     console.error("vote decrypt error:", e.message);
   }
-  if (options.length === 0) { delete state.voters[phone]; }
-  else { state.voters[phone] = { jid: voterJid, options }; }
+  if (!poll.voters) poll.voters = {};
+  if (options.length === 0) { delete poll.voters[phone]; }
+  else { poll.voters[phone] = { jid: voterJid, options }; }
   saveState(state);
-  console.log("Vote recorded:", phone, options.length ? "-> " + options.join(", ") : "(empty/retracted)");
+  console.log("Vote recorded:", phone, "(" + poll.gameDay + ")", options.length ? "-> " + options.join(", ") : "(empty/retracted)");
 }
 
 function loadMvp() { try { return JSON.parse(fs.readFileSync(dataFile(MVP_FILE), "utf8")); } catch { return []; } }
@@ -189,10 +224,11 @@ async function createMvpPoll(cfg) {
     if (hist[i].status !== "cancelled" && hist[i].attendees && hist[i].attendees.length) { src = hist[i].attendees; break; }
   }
   let candidates = [];
+  const pp = primaryPoll();
   if (src) candidates = src.map(a => ({ phone: a.phone, name: a.name || contacts[a.phone] || ("Gracz " + a.phone.slice(-4)) }));
-  else if (state.activePoll) {
-    for (const phone in state.voters) {
-      if (weightOfOptions(state.voters[phone].options) > 0) candidates.push({ phone: phone, name: contacts[phone] || ("Gracz " + phone.slice(-4)) });
+  else if (pp) {
+    for (const phone in pp.voters) {
+      if (weightOfOptions(pp.voters[phone].options) > 0) candidates.push({ phone: phone, name: contacts[phone] || ("Gracz " + phone.slice(-4)) });
     }
   }
   if (candidates.length < 2) { await sock.sendMessage(cfg.groupJid, { text: "Za mało graczy z ostatniego meczu na głosowanie MVP. 🏐" }); return; }
@@ -250,8 +286,9 @@ async function statystykiText(mentionedJid, cfg) {
   for (const h of played) {
     if ((h.attendees || []).some(a => a.phone === phone)) { games++; lastDate = h.date; }
   }
-  if (state.activePoll && state.voters[phone] && weightOfOptions(state.voters[phone].options) > 0) games++;
-  const total = played.length + (state.activePoll ? 1 : 0);
+  const livePlaying = activePolls().filter(p => p.voters[phone] && weightOfOptions(p.voters[phone].options) > 0).length;
+  games += livePlaying;
+  const total = played.length + activePolls().length;
   const pct = total ? Math.round(games / total * 100) : 0;
   const mvpWins = loadMvp().filter(m => m.phone === phone).length;
   const name = contacts[phone] || ("@" + phone);
@@ -263,21 +300,20 @@ async function statystykiText(mentionedJid, cfg) {
 }
 
 function archiveIfGamePassed(strict) {
-  if (!state.activePoll || state.cancelled) return;
   const today = new Date().toLocaleDateString("en-CA", { timeZone: "Europe/Warsaw" });
-  const gd = state.activePoll.gameDate;
-  let passed;
-  if (gd) passed = strict ? (today > gd) : (today >= gd);
-  else {
-    const wd = new Date().toLocaleDateString("en-US", { weekday: "long", timeZone: "Europe/Warsaw" }).toLowerCase();
-    passed = (wd === state.gameDay);
+  const wd = new Date().toLocaleDateString("en-US", { weekday: "long", timeZone: "Europe/Warsaw" }).toLowerCase();
+  let changed = false;
+  for (const poll of activePolls().slice()) {
+    const gd = poll.gameDate;
+    const passed = gd ? (strict ? (today > gd) : (today >= gd)) : (wd === poll.gameDay);
+    if (passed) {
+      console.log("[Auto-archive] game passed (" + poll.gameDay + " gd=" + gd + ", today=" + today + ")");
+      archivePoll(poll, "played");
+      removePoll(poll);
+      changed = true;
+    }
   }
-  if (passed) {
-    console.log("[Auto-archive] game passed (gd=" + gd + ", today=" + today + ")");
-    archiveCurrentPoll("played");
-    state.activePoll = null;
-    saveState(state);
-  }
+  if (changed) saveState(state);
 }
 
 const POLL_OPTIONS = ["Gram", "Nie gram", "Nie wiem", "Gram i przyprowadzam +1", "Gram i przyprowadzam +2"];
@@ -287,39 +323,38 @@ function saveHistory(h) { fs.writeFileSync(dataFile(HISTORY_FILE), JSON.stringif
 // Production history (calendar must reflect production regardless of mode)
 function loadProdHistory() { try { return JSON.parse(fs.readFileSync(HISTORY_FILE, "utf8")); } catch { return []; } }
 
-function archiveCurrentPoll(status) {
-  if (!state.activePoll) return;
-  const { voted, tally } = voteTally();
+function archivePoll(poll, status) {
+  if (!poll) return;
+  const { voted, tally } = tallyOf(poll);
   status = status || "played";
   if (status !== "cancelled" && voted === 0) return;
   const contacts = loadContacts();
   const attendees = [];
-  for (const phone in state.voters) {
-    if (weightOfOptions(state.voters[phone].options) > 0) attendees.push({ phone: phone, name: contacts[phone] || null });
+  for (const phone in poll.voters) {
+    if (weightOfOptions(poll.voters[phone].options) > 0) attendees.push({ phone: phone, name: contacts[phone] || null });
   }
   const hist = loadHistory();
   hist.push({
-    date: new Date().toISOString().slice(0, 10),
-    gameDay: state.gameDay,
-    gameTime: state.activePoll.gameTime || null,
-    question: state.activePoll.question,
+    date: poll.gameDate || new Date().toISOString().slice(0, 10),
+    gameDay: poll.gameDay,
+    gameTime: poll.gameTime || null,
+    question: poll.question,
     status: status,
     voted: voted,
     tally: tally,
     attendees: attendees,
-    players: (state.activePoll.realPlayers != null ? state.activePoll.realPlayers : attendanceFromTally(tally)),
+    players: (poll.realPlayers != null ? poll.realPlayers : attendanceFromTally(tally)),
   });
   if (hist.length > 200) hist.shift();
   saveHistory(hist);
-  console.log("Archived poll:", status, state.gameDay, "players=" + attendanceFromTally(tally));
+  console.log("Archived poll:", status, poll.gameDay, "players=" + attendanceFromTally(tally));
 }
 
 // Shared data: last 10 archived games + current in-progress poll → [{date,gameDay,status,players}]
 function frekwencjaEntries() {
   const entries = loadHistory().slice(-10).map(h => ({ date: h.date, gameDay: h.gameDay, status: h.status, players: h.players || 0 }));
-  if (state.activePoll && !state.cancelled) {
-    const cur = state.activePoll.realPlayers != null ? state.activePoll.realPlayers : attendanceFromTally(voteTally().tally);
-    entries.push({ date: new Date().toISOString().slice(0, 10), gameDay: state.gameDay, status: "wtoku", players: cur });
+  for (const poll of activePolls()) {
+    entries.push({ date: poll.gameDate || new Date().toISOString().slice(0, 10), gameDay: poll.gameDay, status: "wtoku", players: attendanceOf(poll) });
   }
   return entries.slice(-10);
 }
@@ -348,44 +383,47 @@ function frekwencjaChart(cfg) {
 async function createPoll(cfg, day, time, targetJid) {
   const { DAY_NAMES_PL_ACC } = require("./reminder");
   const { scheduleReminders } = require("./scheduler");
-  const dayPl = DAY_NAMES_PL_ACC[day] || day || "";
+  const gday = day || state.gameDay || "friday";
+  const dayPl = DAY_NAMES_PL_ACC[gday] || gday || "";
   const name = "Siatkówka " + dayPl + (time ? " " + time : "") + " 🏐 — gracie?";
   const sent = await sock.sendMessage(targetJid, { poll: { name, values: POLL_OPTIONS, selectableCount: 1 } });
 
-  archiveCurrentPoll("played");
+  // Replace any existing tracked poll for the SAME day (re-post); leave other days' polls intact
+  for (const p of pollsForDay(gday)) removePoll(p);
 
   const optionHashes = {};
   for (const o of POLL_OPTIONS) optionHashes[crypto.createHash("sha256").update(Buffer.from(o)).digest("hex")] = o;
   const secret = sent.message?.messageContextInfo?.messageSecret;
 
-  state.activePoll = {
+  const poll = {
     messageKey: { id: sent.key.id, remoteJid: targetJid },
     question: name,
     options: POLL_OPTIONS,
     optionHashes,
     pollCreatorJid: sock.user ? jidNormalizedUser(sock.user.lid || sock.user.id) : targetJid,
     encKeyB64: secret ? Buffer.from(secret).toString("base64") : null,
+    gameDay: gday,
     gameTime: time || null,
-    gameDate: nextDateForDay(day || state.gameDay || "friday"),
+    gameDate: nextDateForDay(gday),
+    voters: {},
     timestamp: Date.now(),
   };
-  state.voters = {};
-  if (day) state.gameDay = day;
-  state.cancelled = false;
+  state.polls.push(poll);
   state.askedAboutGame = false;
   saveState(state);
-  scheduleReminders(sock, state, saveState, cfg, state.gameDay);
+  scheduleReminders(sock, state, saveState, cfg);
   console.log("Poll created:", name, "encKey:", secret ? "yes" : "NO");
   return name;
 }
 
-function buildSettlement(cost, realPeople, cfg) {
+function buildSettlement(cost, realPeople, cfg, poll) {
   const NL = String.fromCharCode(10);
   const perUnit = cost / realPeople;
   const groups = {};
   let accounted = 0;
-  for (const phone in state.voters) {
-    const v = state.voters[phone];
+  const voters = (poll && poll.voters) || {};
+  for (const phone in voters) {
+    const v = voters[phone];
     const w = weightOfOptions(v.options);
     if (w <= 0) continue;
     accounted += w;
@@ -408,8 +446,9 @@ function buildSettlement(cost, realPeople, cfg) {
 }
 
 function setRealPlayers(n) {
-  if (state.activePoll) {
-    state.activePoll.realPlayers = n;
+  const pp = primaryPoll();
+  if (pp) {
+    pp.realPlayers = n;
     saveState(state);
     return;
   }
@@ -428,9 +467,8 @@ function setRealPlayers(n) {
 }
 
 function getCurrentPlayerCount() {
-  if (state.activePoll) {
-    return state.activePoll.realPlayers != null ? state.activePoll.realPlayers : attendanceFromTally(voteTally().tally);
-  }
+  const pp = primaryPoll();
+  if (pp) return attendanceOf(pp);
   const hist = loadHistory();
   for (let i = hist.length - 1; i >= 0; i--) {
     if (hist[i].status === "cancelled") continue;
@@ -485,7 +523,7 @@ async function handlePlayerUpdateAnswer(text, senderPhone, isFromMe, cfg) {
 }
 
 async function doSettlement(cfg, cost, people) {
-  const st = buildSettlement(cost, people, cfg);
+  const st = buildSettlement(cost, people, cfg, primaryPoll());
   await sock.sendMessage(cfg.groupJid, { text: st.text, mentions: st.mentions });
   setRealPlayers(people);
   state.pendingRozliczenie = null;
@@ -497,7 +535,7 @@ async function doSettlement(cfg, cost, people) {
 async function finalizeRozliczenie(cfg) {
   const p = state.pendingRozliczenie;
   if (!p) return false;
-  const pollPeople = attendanceFromTally(voteTally().tally);
+  const pollPeople = attendanceOf(primaryPoll());
   if (p.people === pollPeople) {
     return await doSettlement(cfg, p.cost, p.people);
   }
@@ -546,9 +584,9 @@ async function rankingText(cfg) {
     }
   }
   const contacts = loadContacts();
-  if (state.activePoll && !state.cancelled) {
-    for (const phone in state.voters) {
-      if (weightOfOptions(state.voters[phone].options) <= 0) continue;
+  for (const poll of activePolls()) {
+    for (const phone in poll.voters) {
+      if (weightOfOptions(poll.voters[phone].options) <= 0) continue;
       if (!counts[phone]) counts[phone] = { name: contacts[phone] || null, count: 0 };
       counts[phone].count++;
     }
@@ -574,6 +612,75 @@ async function rankingText(cfg) {
     i++;
   }
   return lines.join(NL);
+}
+
+// Status of all (or one day's) tracked games this week
+function statusText(dayWord) {
+  const { DAY_NAMES_PL_ACC } = require("./reminder");
+  let polls = activePolls();
+  if (dayWord) { const d = DAY_WORDS[dayWord] || dayWord; polls = pollsForDay(d); }
+  if (!polls.length) return dayWord ? ("Brak gry w " + dayWord + " w tym tygodniu. 🏐") : "Nie ma teraz aktywnej ankiety. 🏐";
+  const fmt = p => (DAY_NAMES_PL_ACC[p.gameDay] || p.gameDay) + (p.gameTime ? " " + p.gameTime : "");
+  if (polls.length === 1) return "Liczba graczy na trening w " + fmt(polls[0]) + " to: " + attendanceOf(polls[0]);
+  const NL = String.fromCharCode(10);
+  const sorted = polls.slice().sort((a, b) => (a.gameDate || "").localeCompare(b.gameDate || ""));
+  return "Gry w tym tygodniu 🏐" + NL + sorted.map(p => "• " + fmt(p) + ": " + attendanceOf(p) + " graczy").join(NL);
+}
+
+// Cancel a game. text = full command (after "bot "). Returns {ok,msg,day?}
+function doCancel(text) {
+  const { DAY_NAMES_PL_ACC } = require("./reminder");
+  const rest = text.replace(/^.*?nie\s+gramy/i, "").trim();
+  const pa = parseAnkieta(rest);
+  const polls = activePolls();
+  let target = null;
+  if (pa.day) {
+    target = findPoll(pa.day, pa.time);
+    if (!target) return { ok: false, msg: "Nie znalazłem gry w " + (DAY_NAMES_PL_ACC[pa.day] || pa.day) + (pa.time ? " o " + pa.time : "") + " w tym tygodniu. 🏐" };
+  } else {
+    if (polls.length === 0) return { ok: false, msg: "Nie ma teraz żadnej zaplanowanej gry do odwołania." };
+    if (polls.length > 1) return { ok: false, msg: "Jest kilka gier w tym tygodniu — podaj którą odwołać, np. \"bot nie gramy wtorek\"." };
+    target = polls[0];
+  }
+  state.preCancel = JSON.parse(JSON.stringify(target));
+  archivePoll(target, "cancelled");
+  removePoll(target);
+  saveState(state);
+  const dpl = DAY_NAMES_PL_ACC[target.gameDay] || target.gameDay;
+  return { ok: true, day: target.gameDay, msg: "Ok, odwołuję trening: " + dpl + (target.gameTime ? " o " + target.gameTime : "") + ". 🏐" };
+}
+
+// Undo the last cancellation
+function doUndo() {
+  const { DAY_NAMES_PL_ACC } = require("./reminder");
+  if (!state.preCancel) return { ok: false, msg: "Nie ma czego cofać — w tym tygodniu nic nie było odwołane." };
+  const poll = state.preCancel;
+  state.polls.push(poll);
+  state.preCancel = null;
+  const hist = loadHistory();
+  for (let i = hist.length - 1; i >= 0; i--) {
+    if (hist[i].status === "cancelled" && hist[i].gameDay === poll.gameDay) { hist.splice(i, 1); break; }
+  }
+  saveHistory(hist);
+  saveState(state);
+  const dpl = DAY_NAMES_PL_ACC[poll.gameDay] || poll.gameDay;
+  return { ok: true, msg: "Cofnięto odwołanie — trening w " + dpl + (poll.gameTime ? " o " + poll.gameTime : "") + " znów aktualny! 🏐" };
+}
+
+// Change day/time of a game (single-poll case; ambiguous when multiple)
+function applyZmien(text) {
+  const { DAY_NAMES_PL_ACC } = require("./reminder");
+  const polls = activePolls();
+  if (!polls.length) return { ok: false, msg: "Nie ma aktywnej ankiety do zmiany. Najpierw: bot ankieta piątek 20:00" };
+  const pa = parseAnkieta(text);
+  if (!pa.day && !pa.time) return { ok: false, msg: "Podaj co zmienić, np. \"bot zmień dzień na czwartek\" albo \"bot zmień godzinę 21:00\"." };
+  if (polls.length > 1) return { ok: false, msg: "Jest kilka gier w tym tygodniu — zmiana działa gdy jest jedna. Odwołaj wybraną (\"bot nie gramy <dzień>\") i utwórz nową ankietę." };
+  const target = polls[0];
+  if (pa.day) { target.gameDay = pa.day; target.gameDate = nextDateForDay(pa.day); }
+  if (pa.time) target.gameTime = pa.time;
+  saveState(state);
+  const dpl = DAY_NAMES_PL_ACC[target.gameDay] || target.gameDay;
+  return { ok: true, msg: "📢 Zmiana terminu treningu: " + dpl + (target.gameTime ? " o " + target.gameTime : "") + ". Ankieta pozostaje aktualna!" };
 }
 
 async function handleGroupCommand(text, cfg, mentioned, senderPhone, isFromMe) {
@@ -640,17 +747,21 @@ async function handleGroupCommand(text, cfg, mentioned, senderPhone, isFromMe) {
   }
   if (low.startsWith("cofnij")) {
     if (await denyIfNotAdmin()) return;
-    if (!state.cancelled || !state.preCancel) { await reply("Nie ma czego cofać — w tym tygodniu trening nie był odwołany."); return; }
-    state.activePoll = state.preCancel.activePoll || null;
-    state.voters = state.preCancel.voters || {};
-    if (state.preCancel.gameDay) state.gameDay = state.preCancel.gameDay;
-    state.cancelled = false;
-    state.preCancel = null;
-    const hist = loadHistory();
-    if (hist.length && hist[hist.length - 1].status === "cancelled") { hist.pop(); saveHistory(hist); }
-    saveState(state);
-    scheduleReminders(sock, state, saveState, cfg, state.gameDay);
-    await reply("Cofnięto odwołanie — trening znów aktualny! 🏐");
+    const r = doUndo();
+    if (r.ok) scheduleReminders(sock, state, saveState, cfg);
+    await reply(r.msg);
+    return;
+  }
+  if (low.startsWith("nie gramy") || low.startsWith("nie gram ")) {
+    if (await denyIfNotAdmin()) return;
+    const r = doCancel(text);
+    scheduleReminders(sock, state, saveState, cfg);
+    await reply(r.msg);
+    return;
+  }
+  if (low.startsWith("status")) {
+    const dayWord = Object.keys(DAY_WORDS).find(w => low.includes(w));
+    await reply(statusText(dayWord));
     return;
   }
   if (low.startsWith("rozlicz")) {
@@ -715,15 +826,9 @@ async function handleGroupCommand(text, cfg, mentioned, senderPhone, isFromMe) {
   }
   if (low.startsWith("zmień") || low.startsWith("zmien") || low.startsWith("zmiana")) {
     if (await denyIfNotAdmin()) return;
-    if (!state.activePoll) { await reply("Nie ma aktywnej ankiety do zmiany. Najpierw: bot ankieta piątek 20:00"); return; }
-    const pa = parseAnkieta(text);
-    if (!pa.day && !pa.time) { await reply("Podaj co zmienić, np. \"bot zmień dzień na czwartek\" albo \"bot zmień godzinę 21:00\"."); return; }
-    if (pa.day) state.gameDay = pa.day;
-    if (pa.time) state.activePoll.gameTime = pa.time;
-    state.cancelled = false; saveState(state);
-    scheduleReminders(sock, state, saveState, cfg, state.gameDay);
-    const dpl = DAY_NAMES_PL_ACC[state.gameDay] || state.gameDay;
-    await reply("📢 Zmiana terminu treningu: " + dpl + (state.activePoll.gameTime ? " o " + state.activePoll.gameTime : "") + ". Ankieta pozostaje aktualna!");
+    const r = applyZmien(text);
+    if (r.ok) scheduleReminders(sock, state, saveState, cfg);
+    await reply(r.msg);
     return;
   }
   if (low.startsWith("frekwencja") || low.startsWith("statystyki")) {
@@ -739,29 +844,22 @@ async function handleGroupCommand(text, cfg, mentioned, senderPhone, isFromMe) {
   if ((cmd.action === "schedule" || cmd.action === "remind" || cmd.action === "cancel") && await denyIfNotAdmin()) return;
 
   if (cmd.action === "status") {
-    const dayPl = DAY_NAMES_PL_ACC[state.gameDay] || state.gameDay || "?";
-    if (state.cancelled) { await reply(`Trening w ${dayPl} jest odwołany — w tym tygodniu nie gramy. 🏐`); return; }
-    if (!state.activePoll) { await reply("Nie ma jeszcze aktywnej ankiety na ten tydzień. 🏐"); return; }
-    const time = state.activePoll.gameTime ? " " + state.activePoll.gameTime : "";
-    const { tally } = voteTally();
-    const players = attendanceFromTally(tally);
-    await reply(`Liczba graczy na trening w ${dayPl}${time} to: ${players}`);
+    await reply(statusText(null));
   } else if (cmd.action === "schedule" && cmd.day) {
-    if (!state.activePoll) state.activePoll = { messageKey:{id:"manual",remoteJid:cfg.groupJid}, question:"manual", options:[], timestamp:Date.now() };
-    state.voters = {}; state.gameDay = cmd.day; state.cancelled = false; state.askedAboutGame = false;
+    state.gameDay = cmd.day; state.askedAboutGame = false;
     saveState(state);
-    scheduleReminders(sock, state, saveState, cfg, cmd.day);
-    await reply(`Ok, ustawiam grę na ${DAY_NAMES_PL_ACC[cmd.day] || cmd.day} i zaplanowałem przypomnienia! 🏐`);
+    scheduleReminders(sock, state, saveState, cfg);
+    await reply(`Ok, domyślny dzień gry to ${DAY_NAMES_PL_ACC[cmd.day] || cmd.day}. Użyj "bot ankieta ${DAY_NAMES_PL_ACC[cmd.day] || cmd.day} 20:00" by wystawić ankietę. 🏐`);
   } else if (cmd.action === "remind") {
-    const r = await sendReminder(sock, state, cfg, false, state.gameDay);
-    if (r && r.everyoneVoted) await reply("Wszyscy już zagłosowali! 🎉");
-    else if (r && r.skipped) await reply("Nie mogę teraz przypomnieć (brak aktywnej ankiety). 🏐");
-    else await notify(sock, cfg, "Komenda z grupy: przypomnij -> wysłano");
+    let total = 0;
+    for (const poll of activePolls()) { const r = await sendReminder(sock, poll, cfg, false); if (r && r.count) total += r.count; }
+    if (!activePolls().length) await reply("Nie mogę teraz przypomnieć (brak aktywnej ankiety). 🏐");
+    else if (total === 0) await reply("Wszyscy już zagłosowali! 🎉");
+    else await notify(sock, cfg, "Komenda z grupy: przypomnij -> " + total);
   } else if (cmd.action === "cancel") {
-    state.preCancel = { activePoll: state.activePoll, voters: state.voters, gameDay: state.gameDay };
-    archiveCurrentPoll("cancelled");
-    state.activePoll = null; state.voters = {}; state.cancelled = true; state.askedAboutGame = false; saveState(state);
-    await reply(`Ok, w tym tygodniu nie gramy — trening odwołany. Do następnego razu! 🏐`);
+    const r = doCancel(text);
+    scheduleReminders(sock, state, saveState, cfg);
+    await reply(r.msg);
   } else if (cmd.action === "help") {
     await reply("Komendy 🏐\n• bot ankieta piątek 20:00 — nowa ankieta\n• bot status — liczba graczy\n• bot zmień dzień na czwartek / godzinę 21:00\n• bot frekwencja — frekwencja i trend\n• bot rozlicz — podziel koszt sali\n• bot ranking — obecność graczy\n• bot przypomnij — przypomnij teraz\n• bot nie gramy — odwołaj trening\n• bot cofnij odwołanie — przywróć trening");
   } else {
@@ -778,7 +876,7 @@ async function handleOwnerCommand(text, cfg) {
     if (cfg.groupJid !== cfg.testGroupJid) { cfg.realGroupJid = cfg.groupJid; cfg.groupJid = cfg.testGroupJid; saveConfig(cfg); }
     testMode = true;
     state = loadState(); weekLog = loadWeekLog();
-    scheduleReminders(sock, state, saveState, cfg, state.gameDay);
+    scheduleReminders(sock, state, saveState, cfg);
     await notify(sock, cfg, "🧪 TRYB TESTOWY włączony — osobne statystyki (*.test.json).");
     return;
   }
@@ -786,7 +884,7 @@ async function handleOwnerCommand(text, cfg) {
     if (cfg.realGroupJid) { cfg.groupJid = cfg.realGroupJid; saveConfig(cfg); }
     testMode = false;
     state = loadState(); weekLog = loadWeekLog();
-    scheduleReminders(sock, state, saveState, cfg, state.gameDay);
+    scheduleReminders(sock, state, saveState, cfg);
     await notify(sock, cfg, "✅ Tryb PRODUKCYJNY — statystyki produkcyjne.");
     return;
   }
@@ -795,17 +893,20 @@ async function handleOwnerCommand(text, cfg) {
     return;
   }
   if (low.startsWith("cofnij")) {
-    if (!state.cancelled || !state.preCancel) { await notify(sock, cfg, "Nie ma czego cofać — trening nie był odwołany."); return; }
-    state.activePoll = state.preCancel.activePoll || null;
-    state.voters = state.preCancel.voters || {};
-    if (state.preCancel.gameDay) state.gameDay = state.preCancel.gameDay;
-    state.cancelled = false;
-    state.preCancel = null;
-    const hist = loadHistory();
-    if (hist.length && hist[hist.length - 1].status === "cancelled") { hist.pop(); saveHistory(hist); }
-    saveState(state);
-    scheduleReminders(sock, state, saveState, cfg, state.gameDay);
-    await notify(sock, cfg, "Cofnięto odwołanie — trening znów aktualny.");
+    const r = doUndo();
+    if (r.ok) scheduleReminders(sock, state, saveState, cfg);
+    await notify(sock, cfg, r.msg);
+    return;
+  }
+  if (low.startsWith("nie gramy") || low.startsWith("nie gram ")) {
+    const r = doCancel(text);
+    scheduleReminders(sock, state, saveState, cfg);
+    await notify(sock, cfg, r.msg);
+    return;
+  }
+  if (low.startsWith("status")) {
+    const dayWord = Object.keys(DAY_WORDS).find(w => low.includes(w));
+    await notify(sock, cfg, statusText(dayWord));
     return;
   }
   if (low.startsWith("rozlicz")) {
@@ -832,16 +933,9 @@ async function handleOwnerCommand(text, cfg) {
     return;
   }
   if (low.startsWith("zmień") || low.startsWith("zmien") || low.startsWith("zmiana")) {
-    if (!state.activePoll) { await notify(sock, cfg, "Nie ma aktywnej ankiety do zmiany."); return; }
-    const pa = parseAnkieta(text);
-    if (!pa.day && !pa.time) { await notify(sock, cfg, "Podaj zmianę, np. \"zmień dzień na czwartek\" albo \"zmień godzinę 21:00\"."); return; }
-    if (pa.day) state.gameDay = pa.day;
-    if (pa.time) state.activePoll.gameTime = pa.time;
-    state.cancelled = false; saveState(state);
-    scheduleReminders(sock, state, saveState, cfg, state.gameDay);
-    const dpl = DAY_NAMES_PL_ACC[state.gameDay] || state.gameDay;
-    await sock.sendMessage(cfg.groupJid, { text: "📢 Zmiana terminu treningu: " + dpl + (state.activePoll.gameTime ? " o " + state.activePoll.gameTime : "") + ". Ankieta pozostaje aktualna!" });
-    await notify(sock, cfg, "Zmieniono termin i ogłoszono w grupie.");
+    const r = applyZmien(text);
+    if (r.ok) { scheduleReminders(sock, state, saveState, cfg); await sock.sendMessage(cfg.groupJid, { text: r.msg }); await notify(sock, cfg, "Zmieniono termin i ogłoszono w grupie."); }
+    else await notify(sock, cfg, r.msg);
     return;
   }
   if (low.startsWith("frekwencja") || low.startsWith("statystyki")) {
@@ -855,32 +949,20 @@ async function handleOwnerCommand(text, cfg) {
   console.log("[Owner command]", JSON.stringify(text), "->", JSON.stringify(cmd));
 
   if (cmd.action === "status") {
-    const poll = state.activePoll;
-    const dayPl = DAY_NAMES_PL_ACC[state.gameDay] || state.gameDay || "?";
-    const { voted, tally } = voteTally();
-    const players = attendanceFromTally(tally);
-    let m = `Status:\n• Dzień gry: ${dayPl}\n• Ankieta: ${state.cancelled ? "ODWOŁANA" : (poll ? "aktywna" : "brak")}\n• Liczba graczy: ${players}`;
-    const tk = Object.keys(tally);
-    if (tk.length) { for (const o of tk) m += `\n   - ${o}: ${tally[o]}`; }
-    else if (voted > 0) m += "\n   (głosy zaszyfrowane — brak rozbicia)";
-    m += `\n• Zagłosowało: ${voted}`;
-    if (state.askedAboutGame) m += "\n• Czekam na odpowiedź grupy czy gramy";
-    await notify(sock, cfg, m);
+    await notify(sock, cfg, statusText(null));
   } else if (cmd.action === "schedule" && cmd.day) {
-    if (!state.activePoll) state.activePoll = { messageKey:{id:"manual",remoteJid:cfg.groupJid}, question:"manual", options:[], timestamp:Date.now() };
-    state.voters = {}; state.gameDay = cmd.day; state.cancelled = false; state.askedAboutGame = false;
+    state.gameDay = cmd.day; state.askedAboutGame = false;
     saveState(state);
-    scheduleReminders(sock, state, saveState, cfg, cmd.day);
+    scheduleReminders(sock, state, saveState, cfg);
+    await notify(sock, cfg, "Domyślny dzień gry: " + (DAY_NAMES_PL_ACC[cmd.day] || cmd.day));
   } else if (cmd.action === "remind") {
-    const r = await sendReminder(sock, state, cfg, false, state.gameDay);
-    if (r && r.count) await notify(sock, cfg, `Wysłano przypomnienie do ${r.count} osób.`);
-    else if (r && r.everyoneVoted) await notify(sock, cfg, "Wszyscy już zagłosowali — nie wysłałem.");
-    else if (r && r.skipped) await notify(sock, cfg, `Pominięto: ${r.skipped}.`);
+    let total = 0;
+    for (const poll of activePolls()) { const r = await sendReminder(sock, poll, cfg, false); if (r && r.count) total += r.count; }
+    await notify(sock, cfg, activePolls().length ? ("Przypomnienie wysłane do " + total + " osób.") : "Brak aktywnej ankiety.");
   } else if (cmd.action === "cancel") {
-    state.preCancel = { activePoll: state.activePoll, voters: state.voters, gameDay: state.gameDay };
-    archiveCurrentPoll("cancelled");
-    state.activePoll = null; state.voters = {}; state.cancelled = true; state.askedAboutGame = false; saveState(state);
-    await notify(sock, cfg, "Ok, anulowałem przypomnienia — trening odwołany na ten tydzień.");
+    const r = doCancel(text);
+    scheduleReminders(sock, state, saveState, cfg);
+    await notify(sock, cfg, r.msg);
   } else if (cmd.action === "help") {
     await notify(sock, cfg, "Komendy:\n• ankieta piątek 20:00 — nowa ankieta\n• status — liczba graczy\n• zmień dzień na czwartek / godzinę 21:00\n• frekwencja — frekwencja i trend\n• rozlicz — podziel koszt sali\n• ranking — obecność graczy\n• przypomnij — przypomnij teraz\n• gramy w czwartek — ustaw dzień\n• nie gramy — odwołaj\n• cofnij odwołanie — przywróć trening\n• test on / test off — grupa testowa");
   } else {
@@ -947,17 +1029,7 @@ async function connectToWhatsApp() {
       if (recentMessages.length > 20) recentMessages = recentMessages.slice(-20);
       console.log("Loaded", added, "messages from history into context.");
     }
-    if (pollIsRecent(state.activePoll) && recentMessages.length > 0) {
-      const { detectGameDay } = require("./reminder");
-      const detected = await detectGameDay(state.activePoll.question, recentMessages, cfg);
-      if (detected !== (state.gameDay || "friday")) {
-        console.log("Startup re-detection: game day", state.gameDay || "friday", "->", detected);
-        state.gameDay = detected;
-        saveState(state);
-        const { scheduleReminders } = require("./scheduler");
-        scheduleReminders(sock, state, saveState, cfg, detected);
-      }
-    }
+    // Per-poll day is fixed at creation; no global re-detection needed in multi-poll model.
   });
 
   if (!authState.creds.registered) {
@@ -1003,7 +1075,7 @@ async function connectToWhatsApp() {
       if (!reminderScheduled) {
         reminderScheduled = true;
         const { scheduleReminders } = require("./scheduler");
-        scheduleReminders(sock, state, saveState, config, state.gameDay);
+        scheduleReminders(sock, state, saveState, config);
       }
     }
   });
@@ -1097,38 +1169,28 @@ async function connectToWhatsApp() {
             const newDay = text.split(" ")[1]?.trim().toLowerCase();
             const valid = ["friday", "thursday", "wednesday", "saturday", "sunday", "monday", "tuesday"];
             if (valid.includes(newDay)) {
-              if (!state.activePoll) {
-                state.activePoll = { messageKey: { id: "manual", remoteJid: cfg.groupJid }, question: "manual override", options: [], timestamp: Date.now() };
-              }
-              state.voters = {};
               state.gameDay = newDay;
               state.askedAboutGame = false;
               saveState(state);
               const { scheduleReminders } = require("./scheduler");
-              scheduleReminders(sock, state, saveState, cfg, newDay);
+              scheduleReminders(sock, state, saveState, cfg);
               const { DAY_NAMES_PL_ACC } = require("./reminder");
-              await sock.sendMessage(cfg.groupJid, { text: `Dzień gry ustawiony na ${DAY_NAMES_PL_ACC[newDay] || newDay}. Przypomnienia zaplanowane! 🏐` });
-              console.log("Game day manually set to:", newDay);
+              await sock.sendMessage(cfg.groupJid, { text: `Domyślny dzień gry ustawiony na ${DAY_NAMES_PL_ACC[newDay] || newDay}. 🏐` });
+              console.log("Default game day set to:", newDay);
             }
           } else if (state.askedAboutGame) {
             const { analyzeGameResponse, DAY_NAMES_PL_ACC } = require("./reminder");
             const result = await analyzeGameResponse(recentMessages, cfg);
             if (result.playing === true && result.day) {
               state.askedAboutGame = false;
-              state.gameDay = result.day;
-              if (!state.activePoll) {
-                state.activePoll = { messageKey: { id: "auto", remoteJid: cfg.groupJid }, question: "auto-detected", options: [], timestamp: Date.now() };
-              }
-              state.voters = {};
               saveState(state);
-              const { scheduleReminders } = require("./scheduler");
-              scheduleReminders(sock, state, saveState, cfg, result.day);
-              await sock.sendMessage(cfg.groupJid, { text: `Super! Zaplanowałem przypomnienia na ${DAY_NAMES_PL_ACC[result.day] || result.day} 🏐` });
-              console.log("[Game response] Playing on", result.day);
-              await notify(sock, cfg, `Grupa potwierdziła grę (${result.day}) w odpowiedzi na pytanie.`);
+              if (!pollsForDay(result.day).length) {
+                const name = await createPoll(cfg, result.day, null, cfg.groupJid);
+                console.log("[Game response] Playing on", result.day, "— poll created");
+                await notify(sock, cfg, `Grupa potwierdziła grę (${result.day}) — wystawiłem ankietę: ${name}`);
+              }
             } else if (result.playing === false) {
               state.askedAboutGame = false;
-              state.activePoll = null;
               saveState(state);
               await sock.sendMessage(cfg.groupJid, { text: "Ok, nie gramy w tym tygodniu! Do zobaczenia następnym razem 🏐" });
               console.log("[Game response] No game this week.");
@@ -1148,27 +1210,30 @@ async function connectToWhatsApp() {
           cfg.groupJid = msg.key.remoteJid;
           saveConfig(cfg);
         }
-        archiveCurrentPoll("played");
         const optNames = (pollMsg.options || []).map(o => o.optionName);
         const optionHashes = {};
         for (const o of optNames) optionHashes[crypto.createHash("sha256").update(Buffer.from(o)).digest("hex")] = o;
         const secret = msg.message.messageContextInfo?.messageSecret;
-        state.activePoll = { messageKey: { id: msg.key.id, remoteJid: msg.key.remoteJid }, question: pollMsg.name, options: optNames, optionHashes, pollCreatorJid: (msg.key.participant || msg.key.remoteJid), encKeyB64: secret ? Buffer.from(secret).toString("base64") : null, timestamp: Date.now() };
-        state.voters = {};
-        state.cancelled = false;
+        // Determine which day this poll is for, then add/replace that day's poll (don't evict others)
+        const { detectGameDay } = require("./reminder");
+        const detectedDay = await detectGameDay(pollMsg.name, recentMessages, cfg) || state.gameDay || "friday";
+        for (const p of pollsForDay(detectedDay)) removePoll(p);
+        const pa = parseAnkieta(pollMsg.name);
+        const poll = {
+          messageKey: { id: msg.key.id, remoteJid: msg.key.remoteJid },
+          question: pollMsg.name, options: optNames, optionHashes,
+          pollCreatorJid: (msg.key.participant || msg.key.remoteJid),
+          encKeyB64: secret ? Buffer.from(secret).toString("base64") : null,
+          gameDay: detectedDay, gameTime: pa.time || null, gameDate: nextDateForDay(detectedDay),
+          voters: {}, timestamp: Date.now(),
+        };
+        state.polls.push(poll);
         state.askedAboutGame = false;
         saveState(state);
-        console.log("Poll tracking started.");
-        await notify(sock, cfg, `Wykryto nową ankietę: "${pollMsg.name}". Śledzę głosy.`);
-        const { detectGameDay } = require("./reminder");
-        const detectedDay = await detectGameDay(pollMsg.name, recentMessages, cfg);
-        if (detectedDay !== (state.gameDay || "friday")) {
-          console.log("Game day changed:", state.gameDay || "friday", "->", detectedDay);
-          state.gameDay = detectedDay;
-          saveState(state);
-          const { scheduleReminders } = require("./scheduler");
-          scheduleReminders(sock, state, saveState, cfg, detectedDay);
-        }
+        console.log("Poll tracking started for", detectedDay);
+        await notify(sock, cfg, `Wykryto nową ankietę (${detectedDay}): "${pollMsg.name}". Śledzę głosy.`);
+        const { scheduleReminders } = require("./scheduler");
+        scheduleReminders(sock, state, saveState, cfg);
       }
     }
   });
@@ -1214,8 +1279,10 @@ function writeCalendar(cfg) {
       if (h.status === "cancelled" || !h.date) continue;
       events[h.date] = { date: h.date, time: h.gameTime || cfg.defaultTime || "20:00" };
     }
-    if (!testMode && state.activePoll && !state.cancelled && state.activePoll.gameDate) {
-      events[state.activePoll.gameDate] = { date: state.activePoll.gameDate, time: state.activePoll.gameTime || cfg.defaultTime || "20:00" };
+    if (!testMode) {
+      for (const poll of activePolls()) {
+        if (poll.gameDate) events[poll.gameDate] = { date: poll.gameDate, time: poll.gameTime || cfg.defaultTime || "20:00" };
+      }
     }
     const stamp = new Date().toISOString().replace(/[-:]/g, "").split(".")[0] + "Z";
     for (const key in events) {
@@ -1291,35 +1358,12 @@ cron.schedule("0 20 * * 0", async () => {
   try { fs.writeFileSync(SUGGEST_FILE, "[]"); } catch {}
 }, { timezone: TZ });
 
-// Monday 10:00 — detect game day from recent messages/poll
-cron.schedule("0 10 * * 1", async () => {
-  console.log("[Monday check] Scanning for game day info...");
-  const cfg = loadConfig();
-  if (!cfg.groupJid || !sock) return;
-  if (pollIsRecent(state.activePoll) || recentMessages.length > 0) {
-    const { detectGameDay } = require("./reminder");
-    const question = state.activePoll?.question || "Kiedy gramy w siatkówkę w tym tygodniu?";
-    const detected = await detectGameDay(question, recentMessages, cfg);
-    if (detected !== (state.gameDay || "friday")) {
-      console.log("[Monday check] Game day:", detected, "— rescheduling");
-      state.gameDay = detected;
-      saveState(state);
-      const { scheduleReminders } = require("./scheduler");
-      scheduleReminders(sock, state, saveState, cfg, detected);
-    } else {
-      console.log("[Monday check] Game day confirmed:", detected);
-    }
-  } else {
-    console.log("[Monday check] No messages or poll yet.");
-  }
-}, { timezone: TZ });
-
 // Tuesday 12:00 — ask group if no poll found yet
 cron.schedule("0 12 * * 2", async () => {
   console.log("[Tuesday check] Checking for active poll...");
   const cfg = loadConfig();
   if (!cfg.groupJid || !sock) return;
-  if (pollIsRecent(state.activePoll)) {
+  if (activePolls().length) {
     console.log("[Tuesday check] Poll exists. No action needed.");
     return;
   }
@@ -1337,12 +1381,13 @@ cron.schedule("0 23 * * *", () => { archiveIfGamePassed(false); }, { timezone: T
 cron.schedule("0 10 * * 1", async () => {
   const cfg = loadConfig();
   if (!cfg.groupJid || !sock) return;
-  if (pollIsRecent(state.activePoll) && !state.cancelled) {
-    console.log("[Auto-poll] active poll already exists — skipping");
+  const defDay = cfg.defaultDay || "friday";
+  if (pollsForDay(defDay).length) {
+    console.log("[Auto-poll] poll for", defDay, "already exists — skipping");
     return;
   }
-  console.log("[Auto-poll] posting weekly poll:", cfg.defaultDay, cfg.defaultTime);
-  await createPoll(cfg, cfg.defaultDay || "friday", cfg.defaultTime || "20:00", cfg.groupJid);
+  console.log("[Auto-poll] posting weekly poll:", defDay, cfg.defaultTime);
+  await createPoll(cfg, defDay, cfg.defaultTime || "20:00", cfg.groupJid);
 }, { timezone: TZ });
 
 // Nightly 03:00 — backup data files (keep last 14 days)

@@ -1,6 +1,6 @@
 const test = require("node:test");
 const assert = require("node:assert");
-const { attendanceFromTally, weightOfOptions, parseAnkieta, nextDateForDay, isAdmin, settlementPeople } = require("../lib");
+const { attendanceFromTally, weightOfOptions, parseAnkieta, nextDateForDay, isAdmin, settlementPeople, matchPoll } = require("../lib");
 
 test("attendanceFromTally: Gram counts as 1 each", () => {
   assert.strictEqual(attendanceFromTally({ "Gram": 3 }), 3);
@@ -98,4 +98,21 @@ test("settlementPeople: back-calc from hallCost/perPerson", () => {
 test("settlementPeople: nothing usable → null", () => {
   assert.strictEqual(settlementPeople({ people: null, total: null, perPerson: null }, 160), null);
   assert.strictEqual(settlementPeople(null, 160), null);
+});
+
+test("matchPoll: by day", () => {
+  const polls = [{ gameDay: "friday", gameTime: "20:00" }, { gameDay: "tuesday", gameTime: "18:00" }];
+  assert.strictEqual(matchPoll(polls, "tuesday").gameTime, "18:00");
+  assert.strictEqual(matchPoll(polls, "friday").gameTime, "20:00");
+});
+
+test("matchPoll: by day + time", () => {
+  const polls = [{ gameDay: "friday", gameTime: "20:00" }, { gameDay: "friday", gameTime: "21:00" }];
+  assert.strictEqual(matchPoll(polls, "friday", "21:00").gameTime, "21:00");
+  assert.strictEqual(matchPoll(polls, "friday", "22:00"), null);
+});
+
+test("matchPoll: no match → null", () => {
+  assert.strictEqual(matchPoll([{ gameDay: "friday" }], "monday"), null);
+  assert.strictEqual(matchPoll([], "friday"), null);
 });
