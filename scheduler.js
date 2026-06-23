@@ -63,4 +63,4 @@ function scheduleReminders(sock, state, saveState, config) {
   else console.log("No games tracked — no reminders scheduled.");
 }
 
-module.exports = { scheduleReminders };
+module.exports = { scheduleReminders, DAY_SCHEDULES };
