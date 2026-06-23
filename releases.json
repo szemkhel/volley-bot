@@ -1,0 +1,70 @@
+[
+  {
+    "version": "v1.8",
+    "date": "23 czerwca 2026",
+    "notes": [
+      "Obsługa kilku gier w jednym tygodniu naraz (np. piątek + dodatkowy wtorek) — każda liczona osobno.",
+      "„bot nie gramy <dzień>” odwołuje tylko wskazaną grę; „bot status <dzień>” pokazuje wybrany dzień."
+    ]
+  },
+  {
+    "version": "v1.7",
+    "date": "22 czerwca 2026",
+    "notes": [
+      "Cotygodniowa ankieta wystawiana automatycznie w poniedziałki o 10:00."
+    ]
+  },
+  {
+    "version": "v1.6",
+    "date": "19 czerwca 2026",
+    "notes": [
+      "„bot frekwencja” wysyła wykres: ostatnie 10 treningów, zielony = graliśmy, czerwony = odwołane, linia optimum."
+    ]
+  },
+  {
+    "version": "v1.5",
+    "date": "19 czerwca 2026",
+    "notes": [
+      "Osobne statystyki dla grupy testowej (testy nie mieszają się z prawdziwymi).",
+      "Imiona graczy w rankingu pokazują się poprawnie."
+    ]
+  },
+  {
+    "version": "v1.4",
+    "date": "18 czerwca 2026",
+    "notes": [
+      "Komenda „bot sugestia <treść>” — każdy może zgłosić pomysł na nową funkcję.",
+      "Ładniejsze i poprawne po polsku wiadomości bota."
+    ]
+  },
+  {
+    "version": "v1.3",
+    "date": "18 czerwca 2026",
+    "notes": [
+      "Bot sam odczytuje liczbę graczy z wiadomości o rozliczeniu sali i aktualizuje frekwencję.",
+      "Komenda „bot koszt sali <kwota>” do ustawienia stałego kosztu wynajmu."
+    ]
+  },
+  {
+    "version": "v1.2",
+    "date": "17 czerwca 2026",
+    "notes": [
+      "Komenda „bot kalendarz” — kalendarz treningów do dodania w telefonie (sam się aktualizuje)."
+    ]
+  },
+  {
+    "version": "v1.1",
+    "date": "17 czerwca 2026",
+    "notes": [
+      "Ranking obecności, statystyki gracza (@osoba), MVP tygodnia i motywacje od bota.",
+      "Uprawnienia adminów dla komend zmieniających ustawienia."
+    ]
+  },
+  {
+    "version": "v1.0",
+    "date": "16 czerwca 2026",
+    "notes": [
+      "Pierwsza wersja: ankiety na trening, przypomnienia o głosowaniu, frekwencja i rozliczenia BLIK."
+    ]
+  }
+]

@@ -614,6 +614,19 @@ async function rankingText(cfg) {
   return lines.join(NL);
 }
 
+// Release notes ("bot zmiany [n]"): n = how many latest versions (default 1 = current only)
+function zmianyText(n) {
+  let releases = [];
+  try { releases = JSON.parse(fs.readFileSync(path.join(DIR, "releases.json"), "utf8")); } catch {}
+  if (!releases.length) return "Brak informacji o wersjach. 🏐";
+  const count = Math.max(1, Math.min(n || 1, releases.length));
+  const NL = String.fromCharCode(10);
+  const blocks = releases.slice(0, count).map(r =>
+    "📌 " + r.version + " (" + r.date + ")" + NL + (r.notes || []).map(x => "• " + x).join(NL)
+  );
+  return "Zmiany w bocie 🏐" + NL + NL + blocks.join(NL + NL);
+}
+
 // Status of all (or one day's) tracked games this week
 function statusText(dayWord) {
   const { DAY_NAMES_PL_ACC } = require("./reminder");
@@ -706,7 +719,7 @@ async function handleGroupCommand(text, cfg, mentioned, senderPhone, isFromMe) {
   }
   const low = text.trim().toLowerCase();
   if (low.startsWith("pomoc") || low.startsWith("help")) {
-    await reply("Komendy 🏐\nDla wszystkich:\n• bot status — liczba graczy\n• bot frekwencja — frekwencja i trend\n• bot ranking — obecność graczy\n• bot statystyki @osoba — statystyki gracza\n• bot motywacja — motywacja od bota\n• bot kalendarz — jak dodać kalendarz treningów\n• bot sugestia <treść> — zaproponuj komendę/funkcję\nTylko admini 🛡️:\n• bot ankieta piątek 20:00 — nowa ankieta\n• bot zmień dzień/godzinę — zmiana terminu\n• bot mvp — głosowanie MVP\n• bot rozlicz — podziel koszt sali\n• bot koszt sali 160 — ustaw koszt wynajmu\n• bot przypomnij — przypomnij teraz\n• bot nie gramy / cofnij odwołanie");
+    await reply("Komendy 🏐\nDla wszystkich:\n• bot status — liczba graczy\n• bot frekwencja — frekwencja i trend\n• bot ranking — obecność graczy\n• bot statystyki @osoba — statystyki gracza\n• bot motywacja — motywacja od bota\n• bot kalendarz — jak dodać kalendarz treningów\n• bot zmiany [ile] — co nowego w bocie\n• bot sugestia <treść> — zaproponuj komendę/funkcję\nTylko admini 🛡️:\n• bot ankieta piątek 20:00 — nowa ankieta\n• bot zmień dzień/godzinę — zmiana terminu\n• bot mvp — głosowanie MVP\n• bot rozlicz — podziel koszt sali\n• bot koszt sali 160 — ustaw koszt wynajmu\n• bot przypomnij — przypomnij teraz\n• bot nie gramy / cofnij odwołanie");
     return;
   }
   if (low.startsWith("sugestia") || low.startsWith("sugestie") || low.startsWith("propozycja") || low.startsWith("pomysł") || low.startsWith("pomysl")) {
@@ -789,6 +802,11 @@ async function handleGroupCommand(text, cfg, mentioned, senderPhone, isFromMe) {
   if (low.startsWith("motywacja") || low.startsWith("motywuj")) {
     const { generateMotivation } = require("./reminder");
     await reply(await generateMotivation(cfg));
+    return;
+  }
+  if (low.startsWith("zmiany") || low.startsWith("changelog") || low.startsWith("wersja")) {
+    const n = parseInt((text.match(/\d+/) || [])[0], 10);
+    await reply(zmianyText(n || 1));
     return;
   }
   if (low.startsWith("kalendarz") || low.startsWith("kalendarium") || low.startsWith("calendar")) {
@@ -923,6 +941,11 @@ async function handleOwnerCommand(text, cfg) {
   }
   if (low.startsWith("ranking")) {
     await notify(sock, cfg, await rankingText(cfg));
+    return;
+  }
+  if (low.startsWith("zmiany") || low.startsWith("changelog") || low.startsWith("wersja")) {
+    const n = parseInt((text.match(/\d+/) || [])[0], 10);
+    await notify(sock, cfg, zmianyText(n || 1));
     return;
   }
   if (low.startsWith("ankieta") || low.startsWith("pool")) {
