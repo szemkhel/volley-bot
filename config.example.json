@@ -12,5 +12,6 @@
   "defaultTime": "20:00",
   "calendarPort": 3000,
   "hallCost": 160,
-  "optimumPlayers": 12
+  "optimumPlayers": 12,
+  "finalizeGraceDays": 3
 }
