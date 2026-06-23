@@ -137,6 +137,13 @@ function attendanceOf(poll) {
   return poll.realPlayers != null ? poll.realPlayers : attendanceFromTally(tallyOf(poll).tally);
 }
 function todayWarsaw() { return new Date().toLocaleDateString("en-CA", { timeZone: "Europe/Warsaw" }); }
+// Current Warsaw wall-clock: { date: "YYYY-MM-DD", minutes: H*60+M } — for comparing against reminder fire times
+function nowWarsaw() {
+  const now = new Date();
+  const date = now.toLocaleDateString("en-CA", { timeZone: "Europe/Warsaw" });
+  const [h, m] = now.toLocaleTimeString("en-GB", { timeZone: "Europe/Warsaw", hour12: false }).split(":").map(Number);
+  return { date, minutes: h * 60 + m };
+}
 function allPolls() { return (state.polls || []); }                                  // everything tracked (incl. disabled)
 function activePolls() { return allPolls().filter(p => !p.cancelled); }              // not disabled
 function upcomingPolls() { const t = todayWarsaw(); return activePolls().filter(p => !p.gameDate || p.gameDate >= t); } // future/today games
@@ -696,6 +703,32 @@ function doUndo() {
   return { ok: true, msg: "Cofnięto odwołanie — trening w " + dpl + (poll.gameTime ? " o " + poll.gameTime : "") + " znów aktualny! 🏐" };
 }
 
+// Admin "przypomniajki": list still-upcoming reminders for this week's active games.
+// Reminder times mirror the scheduler: first = game day −3 @ 18:00, urgent = game day −2 @ 17:00.
+function przypomniajkiText() {
+  const { DAY_NAMES_PL } = require("./reminder");
+  const { DAY_SCHEDULES } = require("./scheduler");
+  const cap = s => s ? s.charAt(0).toUpperCase() + s.slice(1) : s;
+  const addDays = (ymd, delta) => { const d = new Date(ymd + "T12:00:00Z"); d.setUTCDate(d.getUTCDate() + delta); return d.toISOString().slice(0, 10); };
+  const now = nowWarsaw();
+  const isUpcoming = (date, min) => date > now.date || (date === now.date && min > now.minutes);
+
+  const polls = upcomingPolls().slice().sort((a, b) => (a.gameDate || "").localeCompare(b.gameDate || ""));
+  const blocks = [];
+  for (const poll of polls) {
+    const sched = DAY_SCHEDULES[poll.gameDay];
+    if (!sched || !poll.gameDate) continue;
+    const lines = [];
+    if (isUpcoming(addDays(poll.gameDate, -3), 18 * 60)) lines.push("   • pierwsze: " + sched.labels[0]);
+    if (isUpcoming(addDays(poll.gameDate, -2), 17 * 60)) lines.push("   • pilne: " + sched.labels[1]);
+    if (!lines.length) continue;
+    const head = "🏐 " + cap(DAY_NAMES_PL[poll.gameDay] || poll.gameDay) + (poll.gameTime ? " " + poll.gameTime : "");
+    blocks.push(head + "\n" + lines.join("\n"));
+  }
+  if (!blocks.length) return "🔔 Brak nadchodzących przypomnień w tym tygodniu. 🏐";
+  return "🔔 Zaplanowane przypomnienia (nadchodzące):\n\n" + blocks.join("\n\n");
+}
+
 // Change day/time of a game (single-poll case; ambiguous when multiple)
 function applyZmien(text) {
   const { DAY_NAMES_PL_ACC } = require("./reminder");
@@ -735,7 +768,7 @@ async function handleGroupCommand(text, cfg, mentioned, senderPhone, isFromMe) {
   }
   const low = text.trim().toLowerCase();
   if (low.startsWith("pomoc") || low.startsWith("help")) {
-    await reply("Komendy 🏐\nDla wszystkich:\n• bot status — liczba graczy\n• bot frekwencja — frekwencja i trend\n• bot ranking — obecność graczy\n• bot statystyki @osoba — statystyki gracza\n• bot motywacja — motywacja od bota\n• bot kalendarz — jak dodać kalendarz treningów\n• bot zmiany [ile] — co nowego w bocie\n• bot sugestia <treść> — zaproponuj komendę/funkcję\nTylko admini 🛡️:\n• bot ankieta piątek 20:00 — nowa ankieta\n• bot zmień dzień/godzinę — zmiana terminu\n• bot mvp — głosowanie MVP\n• bot rozlicz — podziel koszt sali\n• bot koszt sali 160 — ustaw koszt wynajmu\n• bot przypomnij — przypomnij teraz\n• bot nie gramy / cofnij odwołanie");
+    await reply("Komendy 🏐\nDla wszystkich:\n• bot status — liczba graczy\n• bot frekwencja — frekwencja i trend\n• bot ranking — obecność graczy\n• bot statystyki @osoba — statystyki gracza\n• bot motywacja — motywacja od bota\n• bot kalendarz — jak dodać kalendarz treningów\n• bot zmiany [ile] — co nowego w bocie\n• bot sugestia <treść> — zaproponuj komendę/funkcję\nTylko admini 🛡️:\n• bot ankieta piątek 20:00 — nowa ankieta\n• bot zmień dzień/godzinę — zmiana terminu\n• bot mvp — głosowanie MVP\n• bot rozlicz — podziel koszt sali\n• bot koszt sali 160 — ustaw koszt wynajmu\n• bot przypomnij — przypomnij teraz\n• bot przypomniajki — lista nadchodzących przypomnień\n• bot nie gramy / cofnij odwołanie");
     return;
   }
   if (low.startsWith("sugestia") || low.startsWith("sugestie") || low.startsWith("propozycja") || low.startsWith("pomysł") || low.startsWith("pomysl")) {
@@ -872,6 +905,12 @@ async function handleGroupCommand(text, cfg, mentioned, senderPhone, isFromMe) {
     else await reply(caption);
     return;
   }
+  if (low.startsWith("przypomniajki") || low.startsWith("przypominajki") || low.startsWith("przypomnienia")) {
+    if (await denyIfNotAdmin()) return;
+    await reply(przypomniajkiText());
+    return;
+  }
+
   const cmd = await interpretCommand(text, state, cfg);
   console.log("[Group command]", JSON.stringify(text), "->", JSON.stringify(cmd));
 
@@ -923,13 +962,17 @@ async function handleOwnerCommand(text, cfg) {
     return;
   }
   if (low.startsWith("pomoc") || low.startsWith("help")) {
-    await notify(sock, cfg, "Komendy:\n• ankieta piątek 20:00 — nowa ankieta\n• status — liczba graczy\n• zmień dzień na czwartek / godzinę 21:00\n• frekwencja — frekwencja i trend\n• rozlicz — podziel koszt sali\n• ranking — obecność graczy\n• przypomnij — przypomnij teraz\n• gramy w czwartek — ustaw dzień\n• pomoc — ta lista\n• nie gramy — odwołaj\n• cofnij odwołanie — przywróć trening\n• test on / test off — grupa testowa");
+    await notify(sock, cfg, "Komendy:\n• ankieta piątek 20:00 — nowa ankieta\n• status — liczba graczy\n• zmień dzień na czwartek / godzinę 21:00\n• frekwencja — frekwencja i trend\n• rozlicz — podziel koszt sali\n• ranking — obecność graczy\n• przypomnij — przypomnij teraz\n• przypomniajki — lista nadchodzących przypomnień\n• gramy w czwartek — ustaw dzień\n• pomoc — ta lista\n• nie gramy — odwołaj\n• cofnij odwołanie — przywróć trening\n• test on / test off — grupa testowa");
     return;
   }
   if (low.startsWith("cofnij")) {
     const r = doUndo();
     if (r.ok) scheduleReminders(sock, state, saveState, cfg);
     await notify(sock, cfg, r.msg);
+    return;
+  }
+  if (low.startsWith("przypomniajki") || low.startsWith("przypominajki") || low.startsWith("przypomnienia")) {
+    await notify(sock, cfg, przypomniajkiText());
     return;
   }
   if (low.startsWith("nie gramy") || low.startsWith("nie gram ")) {

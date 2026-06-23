@@ -328,4 +328,4 @@ async function extractSettlement(text, hallCost, config) {
   }
 }
 
-module.exports = { sendReminder, generateReminder, detectGameDay, analyzeGameResponse, interpretCommand, generateMotivation, generateMvpCongrats, proposeFeatures, extractSettlement, DAY_NAMES_PL_ACC };
+module.exports = { sendReminder, generateReminder, detectGameDay, analyzeGameResponse, interpretCommand, generateMotivation, generateMvpCongrats, proposeFeatures, extractSettlement, DAY_NAMES_PL_ACC, DAY_NAMES_PL };
