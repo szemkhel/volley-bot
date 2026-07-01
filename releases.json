@@ -1,5 +1,12 @@
 [
   {
+    "version": "v1.11",
+    "date": "2 lipca 2026",
+    "notes": [
+      "Poprawka: przypomnienia o głosowaniu były pomijane, gdy WhatsApp w międzyczasie się przełączył (rozłączenie/ponowne połączenie). Teraz zawsze używają aktualnego połączenia i ponawiają próbę, jeśli akurat trwa krótka przerwa."
+    ]
+  },
+  {
     "version": "v1.10",
     "date": "23 czerwca 2026",
     "notes": [
