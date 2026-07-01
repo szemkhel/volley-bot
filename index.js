@@ -117,6 +117,9 @@ let weekLog = loadWeekLog();
 let recentMessages = [];
 let sock = null;
 let reminderScheduled = false;
+// Always resolve the CURRENT socket: `sock` is reassigned on every reconnect, so cron
+// closures must read it live (not capture a stale, closed socket at schedule time).
+const getSock = () => sock;
 let connDownAt = null;
 
 
@@ -437,7 +440,7 @@ async function createPoll(cfg, day, time, targetJid) {
   state.polls.push(poll);
   state.askedAboutGame = false;
   saveState(state);
-  scheduleReminders(sock, state, saveState, cfg);
+  scheduleReminders(getSock, state, saveState, cfg);
   console.log("Poll created:", name, "encKey:", secret ? "yes" : "NO");
   return name;
 }
@@ -810,14 +813,14 @@ async function handleGroupCommand(text, cfg, mentioned, senderPhone, isFromMe) {
   if (low.startsWith("cofnij")) {
     if (await denyIfNotAdmin()) return;
     const r = doUndo();
-    if (r.ok) scheduleReminders(sock, state, saveState, cfg);
+    if (r.ok) scheduleReminders(getSock, state, saveState, cfg);
     await reply(r.msg);
     return;
   }
   if (low.startsWith("nie gramy") || low.startsWith("nie gram ")) {
     if (await denyIfNotAdmin()) return;
     const r = doCancel(text);
-    scheduleReminders(sock, state, saveState, cfg);
+    scheduleReminders(getSock, state, saveState, cfg);
     await reply(r.msg);
     return;
   }
@@ -894,7 +897,7 @@ async function handleGroupCommand(text, cfg, mentioned, senderPhone, isFromMe) {
   if (low.startsWith("zmień") || low.startsWith("zmien") || low.startsWith("zmiana")) {
     if (await denyIfNotAdmin()) return;
     const r = applyZmien(text);
-    if (r.ok) scheduleReminders(sock, state, saveState, cfg);
+    if (r.ok) scheduleReminders(getSock, state, saveState, cfg);
     await reply(r.msg);
     return;
   }
@@ -921,7 +924,7 @@ async function handleGroupCommand(text, cfg, mentioned, senderPhone, isFromMe) {
   } else if (cmd.action === "schedule" && cmd.day) {
     state.gameDay = cmd.day; state.askedAboutGame = false;
     saveState(state);
-    scheduleReminders(sock, state, saveState, cfg);
+    scheduleReminders(getSock, state, saveState, cfg);
     await reply(`Ok, domyślny dzień gry to ${DAY_NAMES_PL_ACC[cmd.day] || cmd.day}. Użyj "bot ankieta ${DAY_NAMES_PL_ACC[cmd.day] || cmd.day} 20:00" by wystawić ankietę. 🏐`);
   } else if (cmd.action === "remind") {
     let total = 0;
@@ -931,7 +934,7 @@ async function handleGroupCommand(text, cfg, mentioned, senderPhone, isFromMe) {
     else await notify(sock, cfg, "Komenda z grupy: przypomnij -> " + total);
   } else if (cmd.action === "cancel") {
     const r = doCancel(text);
-    scheduleReminders(sock, state, saveState, cfg);
+    scheduleReminders(getSock, state, saveState, cfg);
     await reply(r.msg);
   } else if (cmd.action === "help") {
     await reply("Komendy 🏐\n• bot ankieta piątek 20:00 — nowa ankieta\n• bot status — liczba graczy\n• bot zmień dzień na czwartek / godzinę 21:00\n• bot frekwencja — frekwencja i trend\n• bot rozlicz — podziel koszt sali\n• bot ranking — obecność graczy\n• bot przypomnij — przypomnij teraz\n• bot nie gramy — odwołaj trening\n• bot cofnij odwołanie — przywróć trening");
@@ -949,7 +952,7 @@ async function handleOwnerCommand(text, cfg) {
     if (cfg.groupJid !== cfg.testGroupJid) { cfg.realGroupJid = cfg.groupJid; cfg.groupJid = cfg.testGroupJid; saveConfig(cfg); }
     testMode = true;
     state = loadState(); weekLog = loadWeekLog();
-    scheduleReminders(sock, state, saveState, cfg);
+    scheduleReminders(getSock, state, saveState, cfg);
     await notify(sock, cfg, "🧪 TRYB TESTOWY włączony — osobne statystyki (*.test.json).");
     return;
   }
@@ -957,7 +960,7 @@ async function handleOwnerCommand(text, cfg) {
     if (cfg.realGroupJid) { cfg.groupJid = cfg.realGroupJid; saveConfig(cfg); }
     testMode = false;
     state = loadState(); weekLog = loadWeekLog();
-    scheduleReminders(sock, state, saveState, cfg);
+    scheduleReminders(getSock, state, saveState, cfg);
     await notify(sock, cfg, "✅ Tryb PRODUKCYJNY — statystyki produkcyjne.");
     return;
   }
@@ -967,7 +970,7 @@ async function handleOwnerCommand(text, cfg) {
   }
   if (low.startsWith("cofnij")) {
     const r = doUndo();
-    if (r.ok) scheduleReminders(sock, state, saveState, cfg);
+    if (r.ok) scheduleReminders(getSock, state, saveState, cfg);
     await notify(sock, cfg, r.msg);
     return;
   }
@@ -977,7 +980,7 @@ async function handleOwnerCommand(text, cfg) {
   }
   if (low.startsWith("nie gramy") || low.startsWith("nie gram ")) {
     const r = doCancel(text);
-    scheduleReminders(sock, state, saveState, cfg);
+    scheduleReminders(getSock, state, saveState, cfg);
     await notify(sock, cfg, r.msg);
     return;
   }
@@ -1016,7 +1019,7 @@ async function handleOwnerCommand(text, cfg) {
   }
   if (low.startsWith("zmień") || low.startsWith("zmien") || low.startsWith("zmiana")) {
     const r = applyZmien(text);
-    if (r.ok) { scheduleReminders(sock, state, saveState, cfg); await sock.sendMessage(cfg.groupJid, { text: r.msg }); await notify(sock, cfg, "Zmieniono termin i ogłoszono w grupie."); }
+    if (r.ok) { scheduleReminders(getSock, state, saveState, cfg); await sock.sendMessage(cfg.groupJid, { text: r.msg }); await notify(sock, cfg, "Zmieniono termin i ogłoszono w grupie."); }
     else await notify(sock, cfg, r.msg);
     return;
   }
@@ -1035,7 +1038,7 @@ async function handleOwnerCommand(text, cfg) {
   } else if (cmd.action === "schedule" && cmd.day) {
     state.gameDay = cmd.day; state.askedAboutGame = false;
     saveState(state);
-    scheduleReminders(sock, state, saveState, cfg);
+    scheduleReminders(getSock, state, saveState, cfg);
     await notify(sock, cfg, "Domyślny dzień gry: " + (DAY_NAMES_PL_ACC[cmd.day] || cmd.day));
   } else if (cmd.action === "remind") {
     let total = 0;
@@ -1043,7 +1046,7 @@ async function handleOwnerCommand(text, cfg) {
     await notify(sock, cfg, activePolls().length ? ("Przypomnienie wysłane do " + total + " osób.") : "Brak aktywnej ankiety.");
   } else if (cmd.action === "cancel") {
     const r = doCancel(text);
-    scheduleReminders(sock, state, saveState, cfg);
+    scheduleReminders(getSock, state, saveState, cfg);
     await notify(sock, cfg, r.msg);
   } else if (cmd.action === "help") {
     await notify(sock, cfg, "Komendy:\n• ankieta piątek 20:00 — nowa ankieta\n• status — liczba graczy\n• zmień dzień na czwartek / godzinę 21:00\n• frekwencja — frekwencja i trend\n• rozlicz — podziel koszt sali\n• ranking — obecność graczy\n• przypomnij — przypomnij teraz\n• gramy w czwartek — ustaw dzień\n• nie gramy — odwołaj\n• cofnij odwołanie — przywróć trening\n• test on / test off — grupa testowa");
@@ -1157,7 +1160,7 @@ async function connectToWhatsApp() {
       if (!reminderScheduled) {
         reminderScheduled = true;
         const { scheduleReminders } = require("./scheduler");
-        scheduleReminders(sock, state, saveState, config);
+        scheduleReminders(getSock, state, saveState, config);
       }
     }
   });
@@ -1255,7 +1258,7 @@ async function connectToWhatsApp() {
               state.askedAboutGame = false;
               saveState(state);
               const { scheduleReminders } = require("./scheduler");
-              scheduleReminders(sock, state, saveState, cfg);
+              scheduleReminders(getSock, state, saveState, cfg);
               const { DAY_NAMES_PL_ACC } = require("./reminder");
               await sock.sendMessage(cfg.groupJid, { text: `Domyślny dzień gry ustawiony na ${DAY_NAMES_PL_ACC[newDay] || newDay}. 🏐` });
               console.log("Default game day set to:", newDay);
@@ -1315,7 +1318,7 @@ async function connectToWhatsApp() {
         console.log("Poll tracking started for", detectedDay);
         await notify(sock, cfg, `Wykryto nową ankietę (${detectedDay}): "${pollMsg.name}". Śledzę głosy.`);
         const { scheduleReminders } = require("./scheduler");
-        scheduleReminders(sock, state, saveState, cfg);
+        scheduleReminders(getSock, state, saveState, cfg);
       }
     }
   });

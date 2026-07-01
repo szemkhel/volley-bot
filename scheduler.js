@@ -16,13 +16,28 @@ const DAY_SCHEDULES = {
   tuesday:   { first: "0 18 * * 6", urgent: "0 17 * * 0", labels: ["sb 18:00", "nd 17:00"] },
 };
 
-async function fireReminder(sock, getPollForDay, day, isUrgent) {
+// `getSock` returns the CURRENT socket — never capture it, the WA socket is recreated on every reconnect.
+async function fireReminder(getSock, getPollForDay, day, isUrgent) {
   const cfg = JSON.parse(fs.readFileSync(__dirname + "/config.json", "utf8"));
-  const poll = getPollForDay(day);
-  if (!poll) return; // game for that day no longer tracked
   const label = isUrgent ? "Pilne przypomnienie" : "Pierwsze przypomnienie";
-  const result = await sendReminder(sock, poll, cfg, isUrgent);
   const dayPl = DAY_NAMES_PL_ACC[day] || day;
+
+  // The socket reconnects frequently; a fire can land during a brief outage. Retry on transient
+  // connection errors (reading the live socket each attempt) so the reminder isn't silently lost.
+  const maxAttempts = 15;
+  let result = null;
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    const poll = getPollForDay(day);
+    if (!poll) return; // game for that day no longer tracked (e.g. cancelled meanwhile)
+    result = await sendReminder(getSock(), poll, cfg, isUrgent);
+    if (!result || !result.error) break; // sent, everyone voted, or non-retryable skip
+    const transient = /connection|closed|timed?\s*out|timeout|lost|not open|socket/i.test(result.error);
+    if (!transient || attempt === maxAttempts) break;
+    console.log(`[Scheduler] ${label} (${dayPl}) send failed: ${result.error} — retry ${attempt}/${maxAttempts} in 60s`);
+    await new Promise(r => setTimeout(r, 60000));
+  }
+
+  const sock = getSock();
   if (result && result.count) {
     await notify(sock, cfg, `${label} (${dayPl}) wysłane do ${result.count} osób bez głosu.`);
   } else if (result && result.everyoneVoted) {
@@ -34,7 +49,7 @@ async function fireReminder(sock, getPollForDay, day, isUrgent) {
 
 // Schedules reminders for EVERY tracked game (one cron pair per distinct game day).
 // `state.polls` is the source of truth; getPollForDay re-reads at fire time so a cancelled game is skipped.
-function scheduleReminders(sock, state, saveState, config) {
+function scheduleReminders(getSock, state, saveState, config) {
   activeCrons.forEach(c => c.destroy());
   activeCrons = [];
 
@@ -49,11 +64,11 @@ function scheduleReminders(sock, state, saveState, config) {
     if (!schedule) continue;
     const j1 = cron.schedule(schedule.first, async () => {
       console.log("[Scheduler] First reminder fired for", day);
-      await fireReminder(sock, getPollForDay, day, false);
+      await fireReminder(getSock, getPollForDay, day, false);
     }, { timezone: tz });
     const j2 = cron.schedule(schedule.urgent, async () => {
       console.log("[Scheduler] Urgent reminder fired for", day);
-      await fireReminder(sock, getPollForDay, day, true);
+      await fireReminder(getSock, getPollForDay, day, true);
     }, { timezone: tz });
     activeCrons.push(j1, j2);
     scheduledLabels.push((DAY_NAMES_PL_ACC[day] || day) + " (" + schedule.labels[0] + " + " + schedule.labels[1] + ")");
