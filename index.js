@@ -1060,7 +1060,7 @@ async function connectToWhatsApp() {
   const { state: authState, saveCreds } = await useMultiFileAuthState(path.join(DIR, "auth_info"));
 
   sock = makeWASocket({
-    logger: pino({ level: "silent" }),
+    logger: pino({ level: process.env.LOG_LEVEL || "warn" }),
     auth: authState,
     printQRInTerminal: false,
     // Stability: keep the WS alive against NAT/idle timeouts, don't contest presence with the
