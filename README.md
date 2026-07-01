@@ -24,7 +24,7 @@ Wszystkie komendy piszesz **na grupie**, zaczynając od słowa **`bot`**.
 - `bot ankieta piątek 20:00` — tworzy nową ankietę na trening. Opcje: **Gram**, **Nie gram**, **Nie wiem**, **Gram i przyprowadzam +1**, **Gram i przyprowadzam +2**
 - `bot status` — liczba graczy na najbliższy trening
 - `bot przypomnij` — wysyła przypomnienie do osób, które jeszcze nie zagłosowały
-- `bot przypomniajki` — (admin) lista nadchodzących, zaplanowanych przypomnień dla gier w tym tygodniu
+- `bot przypominajki` — (admin) lista nadchodzących, zaplanowanych przypomnień dla gier w tym tygodniu
 
 ### Zmiany terminu
 - `bot zmień dzień na czwartek` — zmienia dzień treningu

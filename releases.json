@@ -1,5 +1,13 @@
 [
   {
+    "version": "v1.12",
+    "date": "2 lipca 2026",
+    "notes": [
+      "Poprawiona nazwa komendy: „bot przypominajki” (wcześniej z literówką; stara pisownia nadal działa).",
+      "Stabilniejsze połączenie z WhatsAppem (keep-alive, brak konfliktu obecności z telefonem) — mniej rozłączeń; dodano log przyczyny rozłączenia do diagnostyki."
+    ]
+  },
+  {
     "version": "v1.11",
     "date": "2 lipca 2026",
     "notes": [
@@ -10,7 +18,7 @@
     "version": "v1.10",
     "date": "23 czerwca 2026",
     "notes": [
-      "Nowa komenda dla adminów „bot przypomniajki” — pokazuje nadchodzące, zaplanowane przypomnienia o głosowaniu dla gier w tym tygodniu."
+      "Nowa komenda dla adminów „bot przypominajki” — pokazuje nadchodzące, zaplanowane przypomnienia o głosowaniu dla gier w tym tygodniu."
     ]
   },
   {
