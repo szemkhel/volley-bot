@@ -1,5 +1,12 @@
 [
   {
+    "version": "v1.13",
+    "date": "2 lipca 2026",
+    "notes": [
+      "Logi bota trafiają teraz do centralnego Loki (diagnostyka), a poziom logów jest bardziej pomocny (warn zamiast wyciszonego) — łatwiej namierzać przyczyny rozłączeń."
+    ]
+  },
+  {
     "version": "v1.12",
     "date": "2 lipca 2026",
     "notes": [
