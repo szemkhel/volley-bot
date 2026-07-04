@@ -37,6 +37,10 @@ Wszystkie komendy piszesz **na grupie**, zaczynając od słowa **`bot`**.
 - `bot frekwencja` — ostatnie 10 ankiet (data, liczba graczy, grane/odwołane)
 - `bot ranking` — ranking obecności graczy (kto gra najczęściej)
 
+📊 **Publiczny panel ze statystykami** (ranking, frekwencja, statystyki graczy) jest pod adresem
+[siatkowka.agatrymki.net](https://siatkowka.agatrymki.net/public-dashboards/04eb09a0ce994c36851e51d5e877f1b4) —
+link pojawia się też pod odpowiedziami na `bot ranking` / `bot frekwencja` / `bot statystyki`.
+
 ### Rozliczenie sali
 - `bot rozlicz` — bot zapyta o koszt sali i liczbę graczy, podzieli koszt i wskaże komu ile zapłacić (osoby z +1/+2 płacą za gości), z numerem BLIK
 - `bot rozlicz 100 10` — to samo, ale od razu z danymi (100 zł, 10 osób)
