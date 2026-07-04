@@ -1,5 +1,12 @@
 [
   {
+    "version": "v1.15",
+    "date": "5 lipca 2026",
+    "notes": [
+      "📊 Publiczny panel ze statystykami jest już dostępny — pod „bot ranking”, „bot frekwencja” i „bot statystyki” pojawia się link do ładnych wykresów (ranking obecności, frekwencja, statystyki graczy)."
+    ]
+  },
+  {
     "version": "v1.14",
     "date": "5 lipca 2026",
     "notes": [
