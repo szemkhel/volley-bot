@@ -13,5 +13,6 @@
   "calendarPort": 3000,
   "hallCost": 160,
   "optimumPlayers": 12,
-  "finalizeGraceDays": 3
+  "finalizeGraceDays": 3,
+  "statsUrl": ""
 }

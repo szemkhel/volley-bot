@@ -349,6 +349,19 @@ function saveHistory(h) { fs.writeFileSync(dataFile(HISTORY_FILE), JSON.stringif
 // Production history (calendar must reflect production regardless of mode)
 function loadProdHistory() { try { return JSON.parse(fs.readFileSync(HISTORY_FILE, "utf8")); } catch { return []; } }
 
+// Best-effort mirror of PRODUCTION history into Postgres (powers the public Grafana dashboard).
+// No-op if DATABASE_URL is unset; never throws into callers.
+function syncStatsDb() {
+  try { require("./db").syncFromHistory(loadProdHistory()).catch(e => console.error("[db] sync error:", e.message)); }
+  catch (e) { console.error("[db] sync error:", e.message); }
+}
+
+// Appended to ranking/frekwencja/statystyki messages when a public dashboard URL is configured.
+function statsLink(cfg) {
+  const NL = String.fromCharCode(10);
+  return (cfg && cfg.statsUrl) ? (NL + NL + "📊 Więcej szczegółów: " + cfg.statsUrl) : "";
+}
+
 function archivePoll(poll, status) {
   if (!poll) return;
   const { voted, tally } = tallyOf(poll);
@@ -374,6 +387,7 @@ function archivePoll(poll, status) {
   if (hist.length > 200) hist.shift();
   saveHistory(hist);
   console.log("Archived poll:", status, poll.gameDay, "players=" + attendanceFromTally(tally));
+  if (!testMode) syncStatsDb();
 }
 
 // Shared data: last 10 archived games + current in-progress poll → [{date,gameDay,status,players}]
@@ -844,11 +858,11 @@ async function handleGroupCommand(text, cfg, mentioned, senderPhone, isFromMe) {
     return;
   }
   if (low.startsWith("ranking")) {
-    await reply(await rankingText(cfg));
+    await reply(await rankingText(cfg) + statsLink(cfg));
     return;
   }
   if (low.startsWith("statystyki") || low.startsWith("staty")) {
-    await reply(await statystykiText(mentioned && mentioned[0], cfg));
+    await reply(await statystykiText(mentioned && mentioned[0], cfg) + statsLink(cfg));
     return;
   }
   if (low.startsWith("motywacja") || low.startsWith("motywuj")) {
@@ -902,7 +916,7 @@ async function handleGroupCommand(text, cfg, mentioned, senderPhone, isFromMe) {
     return;
   }
   if (low.startsWith("frekwencja") || low.startsWith("statystyki")) {
-    const caption = frekwencjaText();
+    const caption = frekwencjaText() + statsLink(cfg);
     const img = frekwencjaChart(cfg);
     if (img) { await sock.sendMessage(cfg.groupJid, { image: img, caption: BOT_TAG + "\n" + caption }); await notify(sock, cfg, "Komenda z grupy: frekwencja (z wykresem)"); }
     else await reply(caption);
@@ -1485,6 +1499,10 @@ cron.schedule("0 10 * * 1", async () => {
 // Nightly 03:00 — backup data files (keep last 14 days)
 cron.schedule("0 3 * * *", backupData, { timezone: TZ });
 backupData();
+
+// Mirror production history → Postgres for the public Grafana dashboard (startup + 15-min backstop).
+syncStatsDb();
+cron.schedule("*/15 * * * *", syncStatsDb, { timezone: TZ });
 
 // Calendar ICS feed (subscribable) — regenerate hourly + serve over HTTP
 writeCalendar(loadConfig());

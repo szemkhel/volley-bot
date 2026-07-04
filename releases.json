@@ -1,5 +1,12 @@
 [
   {
+    "version": "v1.14",
+    "date": "5 lipca 2026",
+    "notes": [
+      "Statystyki (ranking, frekwencja) trafiają teraz do bazy danych — przygotowanie pod publiczny panel z ładnymi wykresami (wkrótce link w wiadomościach bota)."
+    ]
+  },
+  {
     "version": "v1.13",
     "date": "2 lipca 2026",
     "notes": [
