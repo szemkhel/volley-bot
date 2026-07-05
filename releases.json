@@ -1,5 +1,12 @@
 [
   {
+    "version": "v1.17",
+    "date": "5 lipca 2026",
+    "notes": [
+      "W panelu „Statystyki graczy” pojawiają się teraz wszyscy z drużyny — także osoby z 0 rozegranych meczów."
+    ]
+  },
+  {
     "version": "v1.16",
     "date": "5 lipca 2026",
     "notes": [

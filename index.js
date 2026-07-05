@@ -354,8 +354,23 @@ function loadProdHistory() { try { return JSON.parse(fs.readFileSync(HISTORY_FIL
 // nightly auto-finalize. In-progress unsettled games are intentionally NOT shown (no vote estimates).
 // No-op if DATABASE_URL is unset; never throws into callers.
 function syncStatsDb() {
-  try { require("./db").syncFromHistory(loadProdHistory()).catch(e => console.error("[db] sync error:", e.message)); }
-  catch (e) { console.error("[db] sync error:", e.message); }
+  try {
+    const hist = loadProdHistory();
+    const db = require("./db");
+    db.syncFromHistory(hist).catch(e => console.error("[db] sync error:", e.message));
+    // Roster so players with 0 games still appear on the dashboard: group members + anyone who ever attended.
+    const contacts = loadContacts();
+    const roster = {};
+    try {
+      const members = JSON.parse(fs.readFileSync(path.join(DIR, "members.json"), "utf8"));
+      for (const m of (members || [])) if (m && m.phone) roster[m.phone] = contacts[m.phone] || m.name || null;
+    } catch (_) {}
+    for (const h of hist) for (const a of (h.attendees || [])) {
+      if (a && a.phone && !roster[a.phone]) roster[a.phone] = contacts[a.phone] || a.name || null;
+    }
+    const players = Object.keys(roster).map(phone => ({ phone: phone, name: roster[phone] }));
+    db.syncRoster(players).catch(e => console.error("[db] roster error:", e.message));
+  } catch (e) { console.error("[db] sync error:", e.message); }
 }
 
 // Appended to ranking/frekwencja/statystyki messages when a public dashboard URL is configured.
