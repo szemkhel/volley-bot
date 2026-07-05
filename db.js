@@ -58,4 +58,29 @@ async function syncFromHistory(history) {
   }
 }
 
-module.exports = { syncFromHistory };
+// Mirror the full player roster (so "0 games" people still show on the dashboard). Best-effort.
+async function syncRoster(players) {
+  const p = getPool();
+  if (!p) return;
+  const client = await p.connect();
+  try {
+    await client.query("BEGIN");
+    for (const pl of (players || [])) {
+      if (!pl || !pl.phone) continue;
+      await client.query(
+        `INSERT INTO players (phone, name, updated_at) VALUES ($1,$2, now())
+         ON CONFLICT (phone) DO UPDATE SET name=COALESCE(EXCLUDED.name, players.name), updated_at=now()`,
+        [pl.phone, pl.name || null]
+      );
+    }
+    await client.query("COMMIT");
+    console.log("[db] synced", (players || []).length, "players to Postgres");
+  } catch (e) {
+    try { await client.query("ROLLBACK"); } catch (_) {}
+    console.error("[db] roster sync failed:", e.message);
+  } finally {
+    client.release();
+  }
+}
+
+module.exports = { syncFromHistory, syncRoster };
