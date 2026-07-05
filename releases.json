@@ -1,5 +1,12 @@
 [
   {
+    "version": "v1.19",
+    "date": "5 lipca 2026",
+    "notes": [
+      "Zapisanie/zmiana nazwy kontaktu w WhatsApp aktualizuje teraz imię gracza wszędzie (statystyki, ranking, panel). Dwie różne osoby o tym samym imieniu nie są już łączone w statystykach."
+    ]
+  },
+  {
     "version": "v1.18",
     "date": "5 lipca 2026",
     "notes": [
