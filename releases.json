@@ -1,12 +1,5 @@
 [
   {
-    "version": "v1.20",
-    "date": "5 lipca 2026",
-    "notes": [
-      "Nowa komenda admina „bot nazwa @osoba Imię Nazwisko” — ręcznie ustawia imię gracza (działa niezależnie od kontaktów WhatsApp; przydatne dla „Gracz 1234” i rozróżnienia osób o tym samym imieniu)."
-    ]
-  },
-  {
     "version": "v1.19",
     "date": "5 lipca 2026",
     "notes": [
