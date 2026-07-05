@@ -812,7 +812,7 @@ async function handleGroupCommand(text, cfg, mentioned, senderPhone, isFromMe) {
   }
   const low = text.trim().toLowerCase();
   if (low.startsWith("pomoc") || low.startsWith("help")) {
-    await reply("Komendy 🏐\nDla wszystkich:\n• bot status — liczba graczy\n• bot frekwencja — frekwencja i trend\n• bot ranking — obecność graczy\n• bot statystyki @osoba — statystyki gracza\n• bot motywacja — motywacja od bota\n• bot kalendarz — jak dodać kalendarz treningów\n• bot zmiany [ile] — co nowego w bocie\n• bot sugestia <treść> — zaproponuj komendę/funkcję\nTylko admini 🛡️:\n• bot ankieta piątek 20:00 — nowa ankieta\n• bot zmień dzień/godzinę — zmiana terminu\n• bot mvp — głosowanie MVP\n• bot rozlicz — podziel koszt sali\n• bot koszt sali 160 — ustaw koszt wynajmu\n• bot przypomnij — przypomnij teraz\n• bot przypominajki — lista nadchodzących przypomnień\n• bot nie gramy / cofnij odwołanie");
+    await reply("Komendy 🏐\nDla wszystkich:\n• bot status — liczba graczy\n• bot frekwencja — frekwencja i trend\n• bot ranking — obecność graczy\n• bot statystyki @osoba — statystyki gracza\n• bot motywacja — motywacja od bota\n• bot kalendarz — jak dodać kalendarz treningów\n• bot zmiany [ile] — co nowego w bocie\n• bot sugestia <treść> — zaproponuj komendę/funkcję\nTylko admini 🛡️:\n• bot ankieta piątek 20:00 — nowa ankieta\n• bot zmień dzień/godzinę — zmiana terminu\n• bot mvp — głosowanie MVP\n• bot rozlicz — podziel koszt sali\n• bot koszt sali 160 — ustaw koszt wynajmu\n• bot przypomnij — przypomnij teraz\n• bot przypominajki — lista nadchodzących przypomnień\n• bot nazwa @osoba Imię — ustaw imię gracza (statystyki/panel)\n• bot nie gramy / cofnij odwołanie");
     return;
   }
   if (low.startsWith("sugestia") || low.startsWith("sugestie") || low.startsWith("propozycja") || low.startsWith("pomysł") || low.startsWith("pomysl")) {
@@ -952,6 +952,21 @@ async function handleGroupCommand(text, cfg, mentioned, senderPhone, isFromMe) {
   if (low.startsWith("przypomniajki") || low.startsWith("przypominajki") || low.startsWith("przypomnienia")) {
     if (await denyIfNotAdmin()) return;
     await reply(przypomniajkiText());
+    return;
+  }
+  // Manual name override — mention resolves to the person's LID (matches attendance keys), unlike
+  // address-book contacts which key by phone number and never propagate in this LID-addressed group.
+  if (low.startsWith("nazwa") || low.startsWith("imię") || low.startsWith("imie")) {
+    if (await denyIfNotAdmin()) return;
+    const target = (mentioned || [])[0];
+    if (!target) { await reply("Oznacz osobę i podaj imię, np. \"bot nazwa @osoba Krzysztof Suski\". 🏐"); return; }
+    const phone = target.split("@")[0];
+    const name = text.replace(/^\s*(nazwa|imię|imie)\b/i, "").replace(/@\d+/g, "").trim();
+    if (!name) { await reply("Podaj imię po oznaczeniu, np. \"bot nazwa @osoba Krzysztof Suski\"."); return; }
+    contacts[phone] = name;
+    saveContacts(contacts);
+    if (!testMode) syncStatsDb();
+    await reply("Zapisałem imię: " + name + " ✅ Zaktualizuje się w statystykach i na panelu.");
     return;
   }
 
