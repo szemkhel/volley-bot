@@ -1127,21 +1127,26 @@ async function connectToWhatsApp() {
 
   sock.ev.on("creds.update", saveCreds);
 
-  sock.ev.on("contacts.upsert", (newContacts) => {
+  // Address-book name (c.name / verifiedName) = owner-set, AUTHORITATIVE → always updates.
+  // pushName (c.notify) only fills an empty name (never overwrites a saved one).
+  // Handles new contacts AND renames, and re-syncs the dashboard so a name change propagates everywhere.
+  const applyContactUpdate = (list) => {
     let changed = false;
-    for (const c of newContacts) {
+    for (const c of (list || [])) {
+      if (!c || !c.id) continue;
       const phone = c.id.split("@")[0];
-      const name = c.notify || c.name || c.verifiedName;
-      if (name && !contacts[phone]) {
-        contacts[phone] = name;
-        changed = true;
-      }
+      const book = c.name || c.verifiedName;
+      if (book && contacts[phone] !== book) { contacts[phone] = book; changed = true; }
+      else if (!contacts[phone] && c.notify) { contacts[phone] = c.notify; changed = true; }
     }
     if (changed) {
       saveContacts(contacts);
+      if (!testMode) syncStatsDb();
       console.log("Contacts cache updated:", Object.keys(contacts).length, "entries");
     }
-  });
+  };
+  sock.ev.on("contacts.upsert", applyContactUpdate);
+  sock.ev.on("contacts.update", applyContactUpdate);
 
   sock.ev.on("messaging-history.set", async ({ messages: histMsgs }) => {
     const cfg = loadConfig();
