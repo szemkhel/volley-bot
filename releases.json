@@ -1,5 +1,12 @@
 [
   {
+    "version": "v1.16",
+    "date": "5 lipca 2026",
+    "notes": [
+      "Mecz pojawia się w panelu statystyk zaraz po jego rozliczeniu („bot rozlicz”) — z realną liczbą graczy. Nierozliczone/bieżące mecze nie są jeszcze pokazywane."
+    ]
+  },
+  {
     "version": "v1.15",
     "date": "5 lipca 2026",
     "notes": [

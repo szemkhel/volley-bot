@@ -346,10 +346,12 @@ const POLL_OPTIONS = ["Gram", "Nie gram", "Nie wiem", "Gram i przyprowadzam +1",
 
 function loadHistory() { try { return JSON.parse(fs.readFileSync(dataFile(HISTORY_FILE), "utf8")); } catch { return []; } }
 function saveHistory(h) { fs.writeFileSync(dataFile(HISTORY_FILE), JSON.stringify(h, null, 2)); }
-// Production history (calendar must reflect production regardless of mode)
+// Production history (calendar + dashboard must reflect production regardless of mode)
 function loadProdHistory() { try { return JSON.parse(fs.readFileSync(HISTORY_FILE, "utf8")); } catch { return []; } }
 
-// Best-effort mirror of PRODUCTION history into Postgres (powers the public Grafana dashboard).
+// Best-effort mirror of PRODUCTION game history into Postgres (powers the public Grafana dashboard).
+// A game lands here once it's finalized — i.e. rozliczenie (archives with the real headcount) or the
+// nightly auto-finalize. In-progress unsettled games are intentionally NOT shown (no vote estimates).
 // No-op if DATABASE_URL is unset; never throws into callers.
 function syncStatsDb() {
   try { require("./db").syncFromHistory(loadProdHistory()).catch(e => console.error("[db] sync error:", e.message)); }
@@ -500,13 +502,14 @@ function setRealPlayers(n) {
   for (let i = hist.length - 1; i >= 0; i--) {
     if (hist[i].status === "cancelled") continue;
     const age = Date.now() - new Date((hist[i].date || today) + "T12:00:00").getTime();
-    if (age < 3 * 24 * 60 * 60 * 1000) { hist[i].players = n; hist[i].realPlayers = n; saveHistory(hist); return; }
+    if (age < 3 * 24 * 60 * 60 * 1000) { hist[i].players = n; hist[i].realPlayers = n; saveHistory(hist); if (!testMode) syncStatsDb(); return; }
     break; // most recent non-cancelled game is too old — fall through to create a fresh entry
   }
   // No recent game on record → create a "played" entry (e.g. played without a poll)
   hist.push({ date: today, gameDay: state.gameDay, gameTime: null, question: "rozliczenie", status: "played", voted: 0, tally: {}, attendees: [], players: n, realPlayers: n });
   if (hist.length > 200) hist.shift();
   saveHistory(hist);
+  if (!testMode) syncStatsDb();
 }
 
 function getCurrentPlayerCount() {
