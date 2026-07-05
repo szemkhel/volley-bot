@@ -958,6 +958,21 @@ async function handleGroupCommand(text, cfg, mentioned, senderPhone, isFromMe) {
     await reply(przypomniajkiText());
     return;
   }
+  // HIDDEN, OWNER-ONLY (isFromMe, not cfg.admins): manually set a player's name. Deliberately absent
+  // from `pomoc`/README/changelog. Mention resolves to the person's LID (matches attendance keys),
+  // unlike address-book contacts which key by phone number and don't propagate in this LID group.
+  if (isFromMe && (low.startsWith("imię") || low.startsWith("imie") || low.startsWith("nazwa"))) {
+    const target = (mentioned || [])[0];
+    if (!target) { await reply("Oznacz osobę i podaj imię, np. \"bot imie @osoba Krzysztof Suski\". 🏐"); return; }
+    const phone = target.split("@")[0];
+    const name = text.replace(/^\s*(imię|imie|nazwa)\b/i, "").replace(/@\d+/g, "").trim();
+    if (!name) { await reply("Podaj imię po oznaczeniu, np. \"bot imie @osoba Krzysztof Suski\"."); return; }
+    contacts[phone] = name;
+    saveContacts(contacts);
+    if (!testMode) syncStatsDb();
+    await reply("Zapisałem imię: " + name + " ✅ Zaktualizuje się w statystykach i na panelu.");
+    return;
+  }
 
   const cmd = await interpretCommand(text, state, cfg);
   console.log("[Group command]", JSON.stringify(text), "->", JSON.stringify(cmd));
