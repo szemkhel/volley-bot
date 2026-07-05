@@ -1,5 +1,14 @@
 [
   {
+    "version": "v1.21",
+    "date": "5 lipca 2026",
+    "notes": [
+      "Głosowanie MVP kończy się teraz 24h po wystawieniu (termin widoczny w treści ankiety), a nie w niedzielę.",
+      "Link do panelu ze statystykami pojawia się pod wszystkimi komendami: status, ranking, frekwencja, statystyki.",
+      "MVP tygodnia trafia do panelu statystyk (nowy wykres)."
+    ]
+  },
+  {
     "version": "v1.19",
     "date": "5 lipca 2026",
     "notes": [

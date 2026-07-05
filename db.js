@@ -83,4 +83,29 @@ async function syncRoster(players) {
   }
 }
 
-module.exports = { syncFromHistory, syncRoster };
+// Mirror MVP winners (one per date) for the dashboard MVP panel. Best-effort.
+async function syncMvp(mvpList) {
+  const p = getPool();
+  if (!p) return;
+  const client = await p.connect();
+  try {
+    await client.query("BEGIN");
+    for (const m of (mvpList || [])) {
+      if (!m || !m.date) continue;
+      await client.query(
+        `INSERT INTO mvp (mvp_date, phone, name, votes) VALUES ($1,$2,$3,$4)
+         ON CONFLICT (mvp_date) DO UPDATE SET phone=EXCLUDED.phone, name=EXCLUDED.name, votes=EXCLUDED.votes`,
+        [m.date, m.phone || null, m.name || null, m.votes || 0]
+      );
+    }
+    await client.query("COMMIT");
+    console.log("[db] synced", (mvpList || []).length, "MVP entries to Postgres");
+  } catch (e) {
+    try { await client.query("ROLLBACK"); } catch (_) {}
+    console.error("[db] mvp sync failed:", e.message);
+  } finally {
+    client.release();
+  }
+}
+
+module.exports = { syncFromHistory, syncRoster, syncMvp };
