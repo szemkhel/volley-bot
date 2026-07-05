@@ -248,7 +248,9 @@ async function createMvpPoll(cfg) {
   candidates = candidates.slice(0, 12);
   const seenN = {};
   const finalOpts = candidates.map(c => { let n = c.name; if (seenN[n]) { seenN[n]++; n = n + " (" + seenN[n] + ")"; } else seenN[n] = 1; return n; });
-  const sent = await sock.sendMessage(cfg.groupJid, { poll: { name: "MVP tygodnia 🏆 — kto był najlepszy?", values: finalOpts, selectableCount: 1 } });
+  const concludeAt = Date.now() + 24 * 60 * 60 * 1000;
+  const deadline = new Date(concludeAt).toLocaleString("pl-PL", { timeZone: cfg.timezone || "Europe/Warsaw", weekday: "long", hour: "2-digit", minute: "2-digit" });
+  const sent = await sock.sendMessage(cfg.groupJid, { poll: { name: "MVP tygodnia 🏆 — kto był najlepszy? (głosowanie do " + deadline + ")", values: finalOpts, selectableCount: 1 } });
   const optionHashes = {};
   for (const o of finalOpts) optionHashes[crypto.createHash("sha256").update(Buffer.from(o)).digest("hex")] = o;
   const optToPlayer = {};
@@ -259,10 +261,10 @@ async function createMvpPoll(cfg) {
     optionHashes, optToPlayer,
     pollCreatorJid: sock.user ? jidNormalizedUser(sock.user.lid || sock.user.id) : cfg.groupJid,
     encKeyB64: secret ? Buffer.from(secret).toString("base64") : null,
-    votes: {}, timestamp: Date.now(),
+    votes: {}, timestamp: Date.now(), concludeAt: concludeAt,
   };
   saveState(state);
-  await notify(sock, cfg, "Utworzono głosowanie MVP (" + finalOpts.length + " kandydatów). Zamknięcie w niedzielę 21:00.");
+  await notify(sock, cfg, "Utworzono głosowanie MVP (" + finalOpts.length + " kandydatów). Zamknięcie za 24h (" + deadline + ").");
   console.log("MVP poll created with", finalOpts.length, "candidates");
 }
 
@@ -350,6 +352,7 @@ function saveHistory(h) { fs.writeFileSync(dataFile(HISTORY_FILE), JSON.stringif
 function loadProdHistory() { try { return JSON.parse(fs.readFileSync(HISTORY_FILE, "utf8")); } catch { return []; } }
 
 function loadProdState() { try { return JSON.parse(fs.readFileSync(STATE_FILE, "utf8")); } catch { return {}; } }
+function loadProdMvp() { try { return JSON.parse(fs.readFileSync(MVP_FILE, "utf8")); } catch { return []; } }
 
 // Best-effort mirror of PRODUCTION games into Postgres (powers the public Grafana dashboard).
 // Shows: archived history + PLAYED games still sitting as active polls (date passed, not cancelled,
@@ -379,13 +382,14 @@ function syncStatsDb() {
     for (const p of played) for (const a of p.attendees) if (a.phone && !roster[a.phone]) roster[a.phone] = a.name || null;
     const players = Object.keys(roster).map(phone => ({ phone: phone, name: roster[phone] }));
     db.syncRoster(players).catch(e => console.error("[db] roster error:", e.message));
+    db.syncMvp(loadProdMvp()).catch(e => console.error("[db] mvp error:", e.message));
   } catch (e) { console.error("[db] sync error:", e.message); }
 }
 
 // Appended to ranking/frekwencja/statystyki messages when a public dashboard URL is configured.
 function statsLink(cfg) {
   const NL = String.fromCharCode(10);
-  return (cfg && cfg.statsUrl) ? (NL + NL + "📊 Więcej szczegółów: " + cfg.statsUrl) : "";
+  return (cfg && cfg.statsUrl) ? (NL + NL + "📊 Więcej danych pod tym linkiem:" + NL + cfg.statsUrl) : "";
 }
 
 function archivePoll(poll, status) {
@@ -867,7 +871,7 @@ async function handleGroupCommand(text, cfg, mentioned, senderPhone, isFromMe) {
   }
   if (low.startsWith("status")) {
     const dayWord = Object.keys(DAY_WORDS).find(w => low.includes(w));
-    await reply(statusText(dayWord));
+    await reply(statusText(dayWord) + statsLink(cfg));
     return;
   }
   if (low.startsWith("rozlicz")) {
@@ -1466,7 +1470,14 @@ function backupData() {
 
 const TZ = loadConfig().timezone || "Europe/Warsaw";
 
-// Sunday 21:00 — close the MVP poll (if any) and announce the winner
+// Hourly — close the MVP poll 24h after it was posted (new polls carry concludeAt)
+cron.schedule("5 * * * *", () => {
+  if (state.mvpPoll && state.mvpPoll.concludeAt && Date.now() >= state.mvpPoll.concludeAt) {
+    closeMvpPoll(loadConfig()).catch(e => console.error("closeMvpPoll(24h):", e.message));
+  }
+}, { timezone: TZ });
+
+// Sunday 21:00 — fallback close for any lingering MVP poll (e.g. legacy polls with no concludeAt)
 cron.schedule("0 21 * * 0", () => {
   closeMvpPoll(loadConfig()).catch(e => console.error("closeMvpPoll:", e.message));
 }, { timezone: TZ });
