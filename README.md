@@ -46,6 +46,7 @@ link pojawia się też pod odpowiedziami na `bot ranking` / `bot frekwencja` / `
 - `bot rozlicz 100 10` — to samo, ale od razu z danymi (100 zł, 10 osób)
 
 ### Inne
+- `bot nazwa @osoba Imię Nazwisko` — (admin) ustawia imię gracza w statystykach i na panelu (przydatne, gdy ktoś pokazuje się jako „Gracz 1234")
 - `bot pomoc` — pełna lista komend
 
 ## 🤖 Co bot robi automatycznie
