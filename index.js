@@ -349,25 +349,34 @@ function saveHistory(h) { fs.writeFileSync(dataFile(HISTORY_FILE), JSON.stringif
 // Production history (calendar + dashboard must reflect production regardless of mode)
 function loadProdHistory() { try { return JSON.parse(fs.readFileSync(HISTORY_FILE, "utf8")); } catch { return []; } }
 
-// Best-effort mirror of PRODUCTION game history into Postgres (powers the public Grafana dashboard).
-// A game lands here once it's finalized — i.e. rozliczenie (archives with the real headcount) or the
-// nightly auto-finalize. In-progress unsettled games are intentionally NOT shown (no vote estimates).
-// No-op if DATABASE_URL is unset; never throws into callers.
+function loadProdState() { try { return JSON.parse(fs.readFileSync(STATE_FILE, "utf8")); } catch { return {}; } }
+
+// Best-effort mirror of PRODUCTION games into Postgres (powers the public Grafana dashboard).
+// Shows: archived history + PLAYED games still sitting as active polls (date passed, not cancelled,
+// not yet rozliczone/finalized) so they appear right away. Player count = real headcount once settled,
+// else the vote-based estimate. Upcoming (not-yet-played) games are not shown. No-op without DATABASE_URL.
 function syncStatsDb() {
   try {
     const hist = loadProdHistory();
-    const db = require("./db");
-    db.syncFromHistory(hist).catch(e => console.error("[db] sync error:", e.message));
-    // Roster so players with 0 games still appear on the dashboard: group members + anyone who ever attended.
+    const today = todayWarsaw();
     const contacts = loadContacts();
+    const db = require("./db");
+    const played = ((loadProdState().polls) || [])
+      .filter(p => !p.cancelled && p.gameDate && p.gameDate < today)
+      .map(p => {
+        const attendees = [];
+        for (const phone in (p.voters || {})) if (weightOfOptions(p.voters[phone].options) > 0) attendees.push({ phone: phone, name: contacts[phone] || null });
+        return { date: p.gameDate, gameDay: p.gameDay, gameTime: p.gameTime || null, question: p.question, status: "played", voted: tallyOf(p).voted, players: attendanceOf(p), attendees: attendees };
+      });
+    db.syncFromHistory(hist.concat(played)).catch(e => console.error("[db] sync error:", e.message));
+    // Roster so players with 0 games still appear: group members + anyone who ever attended.
     const roster = {};
     try {
       const members = JSON.parse(fs.readFileSync(path.join(DIR, "members.json"), "utf8"));
       for (const m of (members || [])) if (m && m.phone) roster[m.phone] = contacts[m.phone] || m.name || null;
     } catch (_) {}
-    for (const h of hist) for (const a of (h.attendees || [])) {
-      if (a && a.phone && !roster[a.phone]) roster[a.phone] = contacts[a.phone] || a.name || null;
-    }
+    for (const h of hist) for (const a of (h.attendees || [])) if (a && a.phone && !roster[a.phone]) roster[a.phone] = contacts[a.phone] || a.name || null;
+    for (const p of played) for (const a of p.attendees) if (a.phone && !roster[a.phone]) roster[a.phone] = a.name || null;
     const players = Object.keys(roster).map(phone => ({ phone: phone, name: roster[phone] }));
     db.syncRoster(players).catch(e => console.error("[db] roster error:", e.message));
   } catch (e) { console.error("[db] sync error:", e.message); }

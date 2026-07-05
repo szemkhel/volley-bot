@@ -1,5 +1,12 @@
 [
   {
+    "version": "v1.18",
+    "date": "5 lipca 2026",
+    "notes": [
+      "Panel statystyk pokazuje rozegrane mecze od razu — bez czekania na rozliczenie. Liczba graczy uściśla się po rozliczeniu (do tego czasu szacunek z głosów)."
+    ]
+  },
+  {
     "version": "v1.17",
     "date": "5 lipca 2026",
     "notes": [
