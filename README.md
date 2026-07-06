@@ -25,6 +25,7 @@ Wszystkie komendy piszesz **na grupie**, zaczynając od słowa **`bot`**.
 - `bot status` — liczba graczy na najbliższy trening
 - `bot przypomnij` — wysyła przypomnienie do osób, które jeszcze nie zagłosowały
 - `bot przypominajki` — (admin) lista nadchodzących, zaplanowanych przypomnień dla gier w tym tygodniu
+- `bot kontuzja <czas>` — zgłoś dłuższą przerwę (np. `bot kontuzja 2 tygodnie`, `bot kontuzja miesiąc`); bot pomija Cię w przypomnieniach do końca przerwy. Powrót: `bot kontuzja koniec`. Admin może zgłosić za kogoś: `bot kontuzja @osoba 3 tygodnie`
 
 ### Zmiany terminu
 - `bot zmień dzień na czwartek` — zmienia dzień treningu

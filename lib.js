@@ -81,4 +81,27 @@ function matchPoll(polls, day, time) {
   return cand[0] || null;
 }
 
-module.exports = { DAY_WORDS, attendanceFromTally, weightOfOptions, parseAnkieta, nextDateForDay, isAdmin, settlementPeople, matchPoll };
+// Parse an injury/absence duration (Polish, approximate) → number of days, or null if unrecognized.
+// Supports: "3 dni", "2 tygodnie", "miesiąc", bare "tydzień"/"miesiac" (default count 1).
+function parseAbsenceDays(text) {
+  const t = (text || "").toLowerCase();
+  const m = t.match(/(\d+)/);
+  const n = m ? parseInt(m[1], 10) : 1;
+  if (!n || n < 1) return null;
+  if (/mies/.test(t)) return n * 30;         // miesiąc/miesiące/miesięcy/miesiac
+  if (/tydz|tygod/.test(t)) return n * 7;    // tydzień/tygodnie/tygodni
+  if (/dzie|dni/.test(t)) return n;          // dzień/dni
+  return null;
+}
+
+// LIDs whose injury/absence is still active (end-date >= today). injuries = { lid: "YYYY-MM-DD" }.
+// ISO date strings compare correctly lexicographically.
+function activeInjuryLids(injuries, today) {
+  const out = [];
+  for (const lid in (injuries || {})) {
+    if (injuries[lid] && injuries[lid] >= today) out.push(lid);
+  }
+  return out;
+}
+
+module.exports = { DAY_WORDS, attendanceFromTally, weightOfOptions, parseAnkieta, nextDateForDay, isAdmin, settlementPeople, matchPoll, parseAbsenceDays, activeInjuryLids };

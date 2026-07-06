@@ -1,6 +1,28 @@
 const test = require("node:test");
 const assert = require("node:assert");
-const { attendanceFromTally, weightOfOptions, parseAnkieta, nextDateForDay, isAdmin, settlementPeople, matchPoll } = require("../lib");
+const { attendanceFromTally, weightOfOptions, parseAnkieta, nextDateForDay, isAdmin, settlementPeople, matchPoll, parseAbsenceDays, activeInjuryLids } = require("../lib");
+
+test("parseAbsenceDays: units", () => {
+  assert.strictEqual(parseAbsenceDays("2 tygodnie"), 14);
+  assert.strictEqual(parseAbsenceDays("tydzień"), 7);
+  assert.strictEqual(parseAbsenceDays("miesiąc"), 30);
+  assert.strictEqual(parseAbsenceDays("3 miesiące"), 90);
+  assert.strictEqual(parseAbsenceDays("5 dni"), 5);
+  assert.strictEqual(parseAbsenceDays("1 dzień"), 1);
+});
+
+test("parseAbsenceDays: unrecognized → null", () => {
+  assert.strictEqual(parseAbsenceDays("kiedyś"), null);
+  assert.strictEqual(parseAbsenceDays(""), null);
+  assert.strictEqual(parseAbsenceDays("0 tygodni"), null);
+});
+
+test("activeInjuryLids: only end-date >= today", () => {
+  const inj = { "111": "2026-07-10", "222": "2026-07-05", "333": "2026-08-01" };
+  assert.deepStrictEqual(activeInjuryLids(inj, "2026-07-07").sort(), ["111", "333"]);
+  assert.deepStrictEqual(activeInjuryLids({}, "2026-07-07"), []);
+  assert.deepStrictEqual(activeInjuryLids(null, "2026-07-07"), []);
+});
 
 test("attendanceFromTally: Gram counts as 1 each", () => {
   assert.strictEqual(attendanceFromTally({ "Gram": 3 }), 3);
