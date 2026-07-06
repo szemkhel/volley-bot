@@ -148,7 +148,8 @@ function fallback(nonVoters, contacts = {}, dayPl = "piątek") {
 }
 
 // poll = a single tracked poll object { voters, gameDay, gameTime, ... }
-async function sendReminder(sock, poll, config, isUrgent) {
+// excludePhones = LIDs to skip (e.g. players on injury/absence break).
+async function sendReminder(sock, poll, config, isUrgent, excludePhones) {
   if (!poll) {
     console.log("No poll. Skipping reminder.");
     return { skipped: "no active poll" };
@@ -168,7 +169,8 @@ async function sendReminder(sock, poll, config, isUrgent) {
     }));
 
     const voters = poll.voters || {};
-    const nonVoters = participants.filter(p => !voters[p.phone]);
+    const exclude = new Set(excludePhones || []);
+    const nonVoters = participants.filter(p => !voters[p.phone] && !exclude.has(p.phone));
 
     if (nonVoters.length === 0) {
       console.log("Everyone voted! No reminder needed.");

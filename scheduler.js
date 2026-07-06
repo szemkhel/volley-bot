@@ -1,6 +1,7 @@
 const cron = require("node-cron");
 const fs = require("fs");
 const { sendReminder, DAY_NAMES_PL_ACC } = require("./reminder");
+const { activeInjuryLids } = require("./lib");
 const { notify } = require("./notify");
 
 let activeCrons = [];
@@ -17,7 +18,8 @@ const DAY_SCHEDULES = {
 };
 
 // `getSock` returns the CURRENT socket — never capture it, the WA socket is recreated on every reconnect.
-async function fireReminder(getSock, getPollForDay, day, isUrgent) {
+// `getExcluded` returns the LIDs to skip (players on injury/absence break), re-read at fire time.
+async function fireReminder(getSock, getPollForDay, getExcluded, day, isUrgent) {
   const cfg = JSON.parse(fs.readFileSync(__dirname + "/config.json", "utf8"));
   const label = isUrgent ? "Pilne przypomnienie" : "Pierwsze przypomnienie";
   const dayPl = DAY_NAMES_PL_ACC[day] || day;
@@ -29,7 +31,7 @@ async function fireReminder(getSock, getPollForDay, day, isUrgent) {
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     const poll = getPollForDay(day);
     if (!poll) return; // game for that day no longer tracked (e.g. cancelled meanwhile)
-    result = await sendReminder(getSock(), poll, cfg, isUrgent);
+    result = await sendReminder(getSock(), poll, cfg, isUrgent, getExcluded());
     if (!result || !result.error) break; // sent, everyone voted, or non-retryable skip
     const transient = /connection|closed|timed?\s*out|timeout|lost|not open|socket/i.test(result.error);
     if (!transient || attempt === maxAttempts) break;
@@ -57,6 +59,7 @@ function scheduleReminders(getSock, state, saveState, config) {
   const polls = (state.polls || []);
   const days = Array.from(new Set(polls.map(p => p.gameDay)));
   const getPollForDay = (day) => (state.polls || []).find(p => p.gameDay === day) || null;
+  const getExcluded = () => activeInjuryLids(state.injuries, new Date().toLocaleDateString("en-CA", { timeZone: tz }));
 
   const scheduledLabels = [];
   for (const day of days) {
@@ -64,11 +67,11 @@ function scheduleReminders(getSock, state, saveState, config) {
     if (!schedule) continue;
     const j1 = cron.schedule(schedule.first, async () => {
       console.log("[Scheduler] First reminder fired for", day);
-      await fireReminder(getSock, getPollForDay, day, false);
+      await fireReminder(getSock, getPollForDay, getExcluded, day, false);
     }, { timezone: tz });
     const j2 = cron.schedule(schedule.urgent, async () => {
       console.log("[Scheduler] Urgent reminder fired for", day);
-      await fireReminder(getSock, getPollForDay, day, true);
+      await fireReminder(getSock, getPollForDay, getExcluded, day, true);
     }, { timezone: tz });
     activeCrons.push(j1, j2);
     scheduledLabels.push((DAY_NAMES_PL_ACC[day] || day) + " (" + schedule.labels[0] + " + " + schedule.labels[1] + ")");

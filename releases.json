@@ -1,5 +1,12 @@
 [
   {
+    "version": "v1.22",
+    "date": "7 lipca 2026",
+    "notes": [
+      "Nowa komenda „bot kontuzja <czas>” — zgłoś dłuższą przerwę (np. 2 tygodnie, miesiąc), a bot pomija Cię w przypomnieniach do jej końca. Powrót: „bot kontuzja koniec”. Admin może zgłosić przerwę za kogoś: „bot kontuzja @osoba 3 tygodnie”."
+    ]
+  },
+  {
     "version": "v1.21",
     "date": "5 lipca 2026",
     "notes": [

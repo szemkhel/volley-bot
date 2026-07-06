@@ -7,7 +7,7 @@ const path = require("path");
 const cron = require("node-cron");
 const http = require("http");
 const { notify } = require("./notify");
-const { DAY_WORDS, attendanceFromTally, weightOfOptions, parseAnkieta, nextDateForDay, isAdmin, settlementPeople, matchPoll } = require("./lib");
+const { DAY_WORDS, attendanceFromTally, weightOfOptions, parseAnkieta, nextDateForDay, isAdmin, settlementPeople, matchPoll, parseAbsenceDays, activeInjuryLids } = require("./lib");
 
 const DIR = __dirname;
 const STATE_FILE = path.join(DIR, "state.json");
@@ -816,7 +816,7 @@ async function handleGroupCommand(text, cfg, mentioned, senderPhone, isFromMe) {
   }
   const low = text.trim().toLowerCase();
   if (low.startsWith("pomoc") || low.startsWith("help")) {
-    await reply("Komendy 🏐\nDla wszystkich:\n• bot status — liczba graczy\n• bot frekwencja — frekwencja i trend\n• bot ranking — obecność graczy\n• bot statystyki @osoba — statystyki gracza\n• bot motywacja — motywacja od bota\n• bot kalendarz — jak dodać kalendarz treningów\n• bot zmiany [ile] — co nowego w bocie\n• bot sugestia <treść> — zaproponuj komendę/funkcję\nTylko admini 🛡️:\n• bot ankieta piątek 20:00 — nowa ankieta\n• bot zmień dzień/godzinę — zmiana terminu\n• bot mvp — głosowanie MVP\n• bot rozlicz — podziel koszt sali\n• bot koszt sali 160 — ustaw koszt wynajmu\n• bot przypomnij — przypomnij teraz\n• bot przypominajki — lista nadchodzących przypomnień\n• bot nie gramy / cofnij odwołanie");
+    await reply("Komendy 🏐\nDla wszystkich:\n• bot status — liczba graczy\n• bot frekwencja — frekwencja i trend\n• bot ranking — obecność graczy\n• bot statystyki @osoba — statystyki gracza\n• bot kontuzja <czas> — zgłoś dłuższą przerwę (pomijam Cię w przypomnieniach)\n• bot motywacja — motywacja od bota\n• bot kalendarz — jak dodać kalendarz treningów\n• bot zmiany [ile] — co nowego w bocie\n• bot sugestia <treść> — zaproponuj komendę/funkcję\nTylko admini 🛡️:\n• bot ankieta piątek 20:00 — nowa ankieta\n• bot zmień dzień/godzinę — zmiana terminu\n• bot mvp — głosowanie MVP\n• bot rozlicz — podziel koszt sali\n• bot koszt sali 160 — ustaw koszt wynajmu\n• bot przypomnij — przypomnij teraz\n• bot przypominajki — lista nadchodzących przypomnień\n• bot nie gramy / cofnij odwołanie");
     return;
   }
   if (low.startsWith("sugestia") || low.startsWith("sugestie") || low.startsWith("propozycja") || low.startsWith("pomysł") || low.startsWith("pomysl")) {
@@ -958,6 +958,32 @@ async function handleGroupCommand(text, cfg, mentioned, senderPhone, isFromMe) {
     await reply(przypomniajkiText());
     return;
   }
+  // Injury/long absence — skip a player in reminders for a period. Self: "bot kontuzja 2 tygodnie".
+  // For someone else (admin only): "bot kontuzja @osoba miesiąc". End early: "bot kontuzja koniec".
+  if (low.startsWith("kontuz")) {
+    const target = (mentioned || [])[0];
+    let targetPhone = target ? target.split("@")[0] : senderPhone;
+    if (target && !allowed) { await reply("⛔ Kontuzję dla innej osoby może zgłosić tylko admin. Dla siebie: \"bot kontuzja 2 tygodnie\"."); return; }
+    if (!targetPhone) { await reply("Nie wiem kogo dotyczy kontuzja — spróbuj z grupy albo oznacz osobę."); return; }
+    const rest = text.replace(/^\s*kontuz\w*/i, "").replace(/@\d+/g, "").trim();
+    const who = target ? (loadContacts()[targetPhone] || ("@" + targetPhone)) : "Ciebie";
+    if (/^(koniec|wracam|zdrow|0)\b/i.test(rest) || rest === "") {
+      if (rest === "") { await reply("Podaj czas przerwy, np. \"bot kontuzja 2 tygodnie\" albo \"bot kontuzja miesiąc\". Koniec przerwy: \"bot kontuzja koniec\". 🩹"); return; }
+      if (state.injuries) delete state.injuries[targetPhone];
+      saveState(state);
+      await reply("💪 Koniec przerwy dla " + who + " — znów przypominam o głosowaniu. 🏐");
+      return;
+    }
+    const days = parseAbsenceDays(rest);
+    if (!days) { await reply("Nie zrozumiałem czasu. Podaj np. \"bot kontuzja 2 tygodnie\", \"bot kontuzja miesiąc\" albo \"bot kontuzja 5 dni\". 🩹"); return; }
+    const d = new Date(todayWarsaw() + "T12:00:00Z"); d.setUTCDate(d.getUTCDate() + days);
+    const until = d.toISOString().slice(0, 10);
+    state.injuries = state.injuries || {};
+    state.injuries[targetPhone] = until;
+    saveState(state);
+    await reply("🩹 Zapisałem przerwę dla " + who + " do " + until + " (~" + days + " dni). Pomijam w przypomnieniach do tego czasu. Wróć wcześniej: \"bot kontuzja koniec\".");
+    return;
+  }
   // HIDDEN, OWNER-ONLY (isFromMe, not cfg.admins): manually set a player's name. Deliberately absent
   // from `pomoc`/README/changelog. Mention resolves to the person's LID (matches attendance keys),
   // unlike address-book contacts which key by phone number and don't propagate in this LID group.
@@ -988,7 +1014,8 @@ async function handleGroupCommand(text, cfg, mentioned, senderPhone, isFromMe) {
     await reply(`Ok, domyślny dzień gry to ${DAY_NAMES_PL_ACC[cmd.day] || cmd.day}. Użyj "bot ankieta ${DAY_NAMES_PL_ACC[cmd.day] || cmd.day} 20:00" by wystawić ankietę. 🏐`);
   } else if (cmd.action === "remind") {
     let total = 0;
-    for (const poll of activePolls()) { const r = await sendReminder(sock, poll, cfg, false); if (r && r.count) total += r.count; }
+    const injured = activeInjuryLids(state.injuries, todayWarsaw());
+    for (const poll of activePolls()) { const r = await sendReminder(sock, poll, cfg, false, injured); if (r && r.count) total += r.count; }
     if (!activePolls().length) await reply("Nie mogę teraz przypomnieć (brak aktywnej ankiety). 🏐");
     else if (total === 0) await reply("Wszyscy już zagłosowali! 🎉");
     else await notify(sock, cfg, "Komenda z grupy: przypomnij -> " + total);
@@ -1102,7 +1129,8 @@ async function handleOwnerCommand(text, cfg) {
     await notify(sock, cfg, "Domyślny dzień gry: " + (DAY_NAMES_PL_ACC[cmd.day] || cmd.day));
   } else if (cmd.action === "remind") {
     let total = 0;
-    for (const poll of activePolls()) { const r = await sendReminder(sock, poll, cfg, false); if (r && r.count) total += r.count; }
+    const injured = activeInjuryLids(state.injuries, todayWarsaw());
+    for (const poll of activePolls()) { const r = await sendReminder(sock, poll, cfg, false, injured); if (r && r.count) total += r.count; }
     await notify(sock, cfg, activePolls().length ? ("Przypomnienie wysłane do " + total + " osób.") : "Brak aktywnej ankiety.");
   } else if (cmd.action === "cancel") {
     const r = doCancel(text);
