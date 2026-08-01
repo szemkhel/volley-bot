@@ -104,4 +104,46 @@ function activeInjuryLids(injuries, today) {
   return out;
 }
 
-module.exports = { DAY_WORDS, attendanceFromTally, weightOfOptions, parseAnkieta, nextDateForDay, isAdmin, settlementPeople, matchPoll, parseAbsenceDays, activeInjuryLids };
+// Exponential backoff between WhatsApp reconnects: 1s, 2s, 4s … capped (default 5 min).
+// WhatsApp answers a rejected client version with 405 on EVERY attempt, so the old
+// retry-immediately loop hammered the server every ~3s — a fast track to a number-level block.
+function reconnectDelay(attempt, capMs) {
+  const cap = capMs || 300000;
+  const n = Math.min(Math.max(0, Math.floor(attempt) || 0), 30);
+  return Math.min(1000 * Math.pow(2, n), cap);
+}
+
+// Health snapshot for the EXTERNAL monitor (GET /health) — the in-band WhatsApp notify is
+// useless for this, since the thing that breaks is WhatsApp itself.
+// "degraded" (HTTP 503) once the socket has been down past thresholdSec, or whenever a human
+// is needed (re-pairing) — a restart can't fix that one, so the monitor must not retry it.
+// The failure this exists to catch: on 2026-07-29 the socket died, systemd still reported
+// `active`, internal crons kept ticking, and the outage went unnoticed for three days.
+function healthReport(now, s, thresholdSec) {
+  const limit = thresholdSec || 900;
+  const connected = !!s.connected;
+  // Never-connected-since-boot must read as down too, else a bot stuck in a connect loop
+  // (no close event yet recorded) would report perfectly healthy.
+  const downSince = connected ? null : (s.connDownAt || s.bootAt || now);
+  const downForSec = downSince ? Math.max(0, Math.round((now - downSince) / 1000)) : 0;
+  const needsRepair = !!s.needsRepair;
+  const degraded = needsRepair || downForSec > limit;
+  return {
+    code: degraded ? 503 : 200,
+    body: {
+      status: degraded ? "degraded" : "ok",
+      connected,
+      downForSec,
+      uptimeSec: Math.max(0, Math.round((now - (s.bootAt || now)) / 1000)),
+      lastOpenAt: s.lastOpenAt || null,
+      lastCloseAt: s.lastCloseAt || null,
+      lastCloseCode: s.lastCloseCode == null ? null : s.lastCloseCode,
+      lastMessageAt: s.lastMessageAt || null,
+      needsRepair,
+      openPolls: s.openPolls || 0,
+      version: s.version || null,
+    },
+  };
+}
+
+module.exports = { DAY_WORDS, attendanceFromTally, weightOfOptions, parseAnkieta, nextDateForDay, isAdmin, settlementPeople, matchPoll, parseAbsenceDays, activeInjuryLids, reconnectDelay, healthReport };

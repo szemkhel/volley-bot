@@ -1,5 +1,14 @@
 [
   {
+    "version": "v1.23",
+    "date": "2 sierpnia 2026",
+    "notes": [
+      "Naprawione połączenie z WhatsAppem — bot milczał od 29 lipca (nie wysłał przypomnienia na piątek i nie widział żadnych wiadomości). WhatsApp przestał akceptować starą wersję klienta, teraz bot pobiera aktualną przy każdym starcie.",
+      "Po zerwaniu połączenia bot ponawia próby w rosnących odstępach zamiast łomotać co kilka sekund.",
+      "Bot udostępnia swój stan zdrowia zewnętrznemu monitoringowi, więc taka cicha awaria nie przejdzie już niezauważona."
+    ]
+  },
+  {
     "version": "v1.22",
     "date": "7 lipca 2026",
     "notes": [
