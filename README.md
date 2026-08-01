@@ -76,7 +76,29 @@ node index.js
 
 Sekrety (klucze API, numery) trzymamy w `.env` (ignorowane przez gita). **Nigdy nie commituj prawdziwych danych.**
 
+### Monitoring stanu (`/health`)
+
+Bot wystawia swój stan pod `GET :3000/health` (ten sam serwer, co feed kalendarza) — na
+użytek zewnętrznego monitoringu:
+
+| odpowiedź | znaczenie |
+|---|---|
+| `200` | zdrowy |
+| `503` | połączenie z WhatsAppem leży dłużej niż 15 min, albo wymagane ponowne parowanie (`needsRepair`) |
+| brak odpowiedzi | proces martwy lub zawieszony |
+
+```json
+{ "status": "ok", "connected": true, "downForSec": 0, "uptimeSec": 12345,
+  "lastOpenAt": "…", "lastCloseAt": null, "lastCloseCode": null,
+  "lastMessageAt": "…", "needsRepair": false, "openPolls": 1, "version": "v1.23" }
+```
+
+Stan liczony jest z **socketu WhatsAppa**, nie z procesu: usługa potrafi raportować `active`,
+mając martwe połączenie — tak przepadły trzy dni w lipcu 2026. `needsRepair: true` oznacza,
+że restart nie pomoże i potrzebna jest ręczna interwencja.
+
 ### Stos technologiczny
-- Node.js + [Baileys](https://github.com/WhiskeySockets/Baileys) (WhatsApp Web)
+- Node.js + [Baileys](https://github.com/WhiskeySockets/Baileys) (WhatsApp Web) — wersja klienta
+  WA pobierana przy starcie, bo WhatsApp odrzuca wycofane wersje błędem `405`
 - Claude (Anthropic) — generowanie wiadomości po polsku
 - node-cron — harmonogram zadań

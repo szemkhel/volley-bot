@@ -1,6 +1,52 @@
 const test = require("node:test");
 const assert = require("node:assert");
-const { attendanceFromTally, weightOfOptions, parseAnkieta, nextDateForDay, isAdmin, settlementPeople, matchPoll, parseAbsenceDays, activeInjuryLids } = require("../lib");
+const { attendanceFromTally, weightOfOptions, parseAnkieta, nextDateForDay, isAdmin, settlementPeople, matchPoll, parseAbsenceDays, activeInjuryLids, reconnectDelay, healthReport } = require("../lib");
+
+test("reconnectDelay: exponential, capped", () => {
+  assert.strictEqual(reconnectDelay(0), 1000);
+  assert.strictEqual(reconnectDelay(1), 2000);
+  assert.strictEqual(reconnectDelay(4), 16000);
+  assert.strictEqual(reconnectDelay(99), 300000);   // cap, no overflow to Infinity
+  assert.strictEqual(reconnectDelay(-1), 1000);
+});
+
+test("healthReport: connected → 200 ok", () => {
+  const now = 10_000_000;
+  const r = healthReport(now, { connected: true, bootAt: now - 60_000, lastOpenAt: "2026-08-01T00:00:00.000Z" });
+  assert.strictEqual(r.code, 200);
+  assert.strictEqual(r.body.status, "ok");
+  assert.strictEqual(r.body.downForSec, 0);
+  assert.strictEqual(r.body.uptimeSec, 60);
+});
+
+test("healthReport: short outage stays ok, long one degrades", () => {
+  const now = 10_000_000;
+  const base = { connected: false, bootAt: now - 3_600_000 };
+  assert.strictEqual(healthReport(now, { ...base, connDownAt: now - 60_000 }).code, 200);
+  assert.strictEqual(healthReport(now, { ...base, connDownAt: now - 1_800_000 }).code, 503);
+  assert.strictEqual(healthReport(now, { ...base, connDownAt: now - 1_800_000 }).body.downForSec, 1800);
+});
+
+test("healthReport: never connected since boot counts as down", () => {
+  const now = 10_000_000;
+  const r = healthReport(now, { connected: false, bootAt: now - 1_800_000 });
+  assert.strictEqual(r.code, 503);
+  assert.strictEqual(r.body.downForSec, 1800);
+});
+
+test("healthReport: needsRepair degrades immediately, even while connected", () => {
+  const now = 10_000_000;
+  const r = healthReport(now, { connected: true, bootAt: now - 60_000, needsRepair: true });
+  assert.strictEqual(r.code, 503);
+  assert.strictEqual(r.body.needsRepair, true);
+});
+
+test("healthReport: custom threshold", () => {
+  const now = 10_000_000;
+  const s = { connected: false, bootAt: now - 3_600_000, connDownAt: now - 120_000 };
+  assert.strictEqual(healthReport(now, s, 60).code, 503);
+  assert.strictEqual(healthReport(now, s, 300).code, 200);
+});
 
 test("parseAbsenceDays: units", () => {
   assert.strictEqual(parseAbsenceDays("2 tygodnie"), 14);

@@ -1,5 +1,5 @@
 require("dotenv").config({ path: __dirname + "/.env" });
-const { default: makeWASocket, useMultiFileAuthState, DisconnectReason, decryptPollVote, jidNormalizedUser } = require("@whiskeysockets/baileys");
+const { default: makeWASocket, useMultiFileAuthState, DisconnectReason, decryptPollVote, jidNormalizedUser, fetchLatestBaileysVersion } = require("@whiskeysockets/baileys");
 const crypto = require("crypto");
 const pino = require("pino");
 const fs = require("fs");
@@ -7,7 +7,7 @@ const path = require("path");
 const cron = require("node-cron");
 const http = require("http");
 const { notify } = require("./notify");
-const { DAY_WORDS, attendanceFromTally, weightOfOptions, parseAnkieta, nextDateForDay, isAdmin, settlementPeople, matchPoll, parseAbsenceDays, activeInjuryLids } = require("./lib");
+const { DAY_WORDS, attendanceFromTally, weightOfOptions, parseAnkieta, nextDateForDay, isAdmin, settlementPeople, matchPoll, parseAbsenceDays, activeInjuryLids, reconnectDelay, healthReport } = require("./lib");
 
 const DIR = __dirname;
 const STATE_FILE = path.join(DIR, "state.json");
@@ -121,6 +121,23 @@ let reminderScheduled = false;
 // closures must read it live (not capture a stale, closed socket at schedule time).
 const getSock = () => sock;
 let connDownAt = null;
+
+// Liveness reported by GET /health to the external monitor. Deliberately derived from the
+// SOCKET, not the process: systemd said `active` for three days in Jul 2026 while the
+// WhatsApp connection was dead and every cron kept happily ticking.
+const BOOT_AT = Date.now();
+const health = { connected: false, lastOpenAt: null, lastCloseAt: null, lastCloseCode: null, lastMessageAt: null };
+let reconnectAttempts = 0;
+let reconnectTimer = null;
+
+// One reconnect in flight at a time, with growing delay. Close events can arrive several at
+// once (and 405 rejects instantly), so an unguarded immediate retry becomes a request storm.
+function scheduleReconnect() {
+  if (reconnectTimer) return;
+  const delay = reconnectDelay(reconnectAttempts++);
+  console.log(`Reconnecting in ${Math.round(delay / 1000)}s (attempt ${reconnectAttempts})...`);
+  reconnectTimer = setTimeout(() => { reconnectTimer = null; connectToWhatsApp(); }, delay);
+}
 
 
 // --- Multi-poll helpers ---
@@ -688,6 +705,12 @@ async function rankingText(cfg) {
   return lines.join(NL);
 }
 
+// Newest entry in releases.json = the version currently running (reported by /health).
+function currentVersion() {
+  try { return (JSON.parse(fs.readFileSync(path.join(DIR, "releases.json"), "utf8"))[0] || {}).version || null; }
+  catch { return null; }
+}
+
 // Release notes ("bot zmiany [n]"): n = how many latest versions (default 1 = current only)
 function zmianyText(n) {
   let releases = [];
@@ -1147,10 +1170,23 @@ async function connectToWhatsApp() {
   const config = loadConfig();
   const { state: authState, saveCreds } = await useMultiFileAuthState(path.join(DIR, "auth_info"));
 
+  // Baileys pins a WA Web client version at release time. WhatsApp eventually retires that
+  // version and then rejects EVERY connect with `405 Connection Failure` — which is exactly
+  // what killed the bot on 2026-07-29. Resolve the current version at connect time instead;
+  // if the lookup fails (no network yet), fall back to the bundled one rather than not starting.
+  let waVersion = null;
+  try {
+    waVersion = (await fetchLatestBaileysVersion()).version;
+    console.log("[Conn] WA Web version", waVersion.join("."));
+  } catch (e) {
+    console.error("[Conn] version lookup failed, using bundled default:", e.message);
+  }
+
   sock = makeWASocket({
     logger: pino({ level: process.env.LOG_LEVEL || "warn" }),
     auth: authState,
     printQRInTerminal: false,
+    ...(waVersion ? { version: waVersion } : {}),
     // Stability: keep the WS alive against NAT/idle timeouts, don't contest presence with the
     // owner's phone, and use a stable client signature. Mitigates the periodic ~30-60min drops.
     browser: ["Volley Bot", "Chrome", "1.0.0"],
@@ -1233,16 +1269,21 @@ async function connectToWhatsApp() {
       const code = lastDisconnect?.error?.output?.statusCode;
       const reason = Object.keys(DisconnectReason).find(k => DisconnectReason[k] === code) || "unknown";
       console.log(`[Conn] closed — statusCode=${code} (${reason}) msg=${lastDisconnect?.error?.message || ""}`);
+      health.connected = false;
+      health.lastCloseAt = new Date().toISOString();
+      health.lastCloseCode = code == null ? null : code;
       if (code !== DisconnectReason.loggedOut) {
         if (!connDownAt) connDownAt = Date.now();
-        console.log("Reconnecting...");
-        connectToWhatsApp();
+        scheduleReconnect();
       } else {
         console.log("Logged out. Delete auth_info/ and restart.");
         try { fs.writeFileSync(path.join(DIR, "NEEDS_REPAIR.txt"), new Date().toISOString() + " - WhatsApp wylogowany, wymagane ponowne parowanie\n"); } catch (e) {}
       }
     } else if (connection === "open") {
       console.log("WhatsApp connected!");
+      health.connected = true;
+      health.lastOpenAt = new Date().toISOString();
+      reconnectAttempts = 0;   // only a real open resets the backoff — a failed attempt must not
       console.log("[DBG sock.user]", JSON.stringify(sock.user));
       // Seed owner's own name into contacts (own messages are fromMe → never cached otherwise)
       try {
@@ -1267,6 +1308,9 @@ async function connectToWhatsApp() {
 
   sock.ev.on("messages.upsert", async ({ messages, type }) => {
     const cfg = loadConfig();
+    // Proof that traffic actually flows. `connected` can stay true on a half-open socket,
+    // so the monitor gets this as a second, independent signal of real activity.
+    if (messages && messages.length) health.lastMessageAt = new Date().toISOString();
 
     for (const msg of messages) {
       if (!msg.message) continue;
@@ -1600,5 +1644,22 @@ http.createServer((req, res) => {
       res.writeHead(200, { "Content-Type": "text/calendar; charset=utf-8" });
       res.end(ics);
     } catch (e) { res.writeHead(404); res.end("no calendar yet"); }
+  } else if (req.url === "/health") {
+    // Scraped by the external monitor (separate tool, outside this repo). 200 = healthy,
+    // 503 = degraded, no answer at all = process dead — all three are meaningful to it.
+    // Keep the payload free of secrets and of anything that identifies group members:
+    // port 3000 also serves the public calendar feed.
+    let needsRepair = false;
+    try { needsRepair = fs.existsSync(path.join(DIR, "NEEDS_REPAIR.txt")); } catch (e) {}
+    const { code, body } = healthReport(Date.now(), {
+      bootAt: BOOT_AT,
+      connDownAt,
+      needsRepair,
+      openPolls: (state.polls || []).filter(p => !p.cancelled).length,
+      version: currentVersion(),
+      ...health,
+    });
+    res.writeHead(code, { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" });
+    res.end(JSON.stringify(body));
   } else { res.writeHead(404); res.end(); }
 }).listen(loadConfig().calendarPort || 3000, () => console.log("[Calendar] serving on port", loadConfig().calendarPort || 3000));
