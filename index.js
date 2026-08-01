@@ -7,7 +7,7 @@ const path = require("path");
 const cron = require("node-cron");
 const http = require("http");
 const { notify } = require("./notify");
-const { DAY_WORDS, attendanceFromTally, weightOfOptions, parseAnkieta, nextDateForDay, isAdmin, settlementPeople, matchPoll, parseAbsenceDays, activeInjuryLids, reconnectDelay, healthReport } = require("./lib");
+const { DAY_WORDS, attendanceFromTally, weightOfOptions, parseAnkieta, nextDateForDay, isAdmin, settlementPeople, matchPoll, parseAbsenceDays, activeInjuryLids, reconnectDelay, healthReport, mergeGameRows } = require("./lib");
 
 const DIR = __dirname;
 const STATE_FILE = path.join(DIR, "state.json");
@@ -388,7 +388,7 @@ function syncStatsDb() {
         for (const phone in (p.voters || {})) if (weightOfOptions(p.voters[phone].options) > 0) attendees.push({ phone: phone, name: contacts[phone] || null });
         return { date: p.gameDate, gameDay: p.gameDay, gameTime: p.gameTime || null, question: p.question, status: "played", voted: tallyOf(p).voted, players: attendanceOf(p), attendees: attendees };
       });
-    db.syncFromHistory(hist.concat(played)).catch(e => console.error("[db] sync error:", e.message));
+    db.syncFromHistory(mergeGameRows(hist, played)).catch(e => console.error("[db] sync error:", e.message));
     // Roster so players with 0 games still appear: group members + anyone who ever attended.
     const roster = {};
     try {

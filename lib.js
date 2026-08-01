@@ -104,6 +104,19 @@ function activeInjuryLids(injuries, today) {
   return out;
 }
 
+// Dashboard rows = archived history + games still sitting as active polls (date passed, not yet
+// settled). When BOTH describe the same game, HISTORY WINS: it carries the settled headcount,
+// while the poll row only ever has the vote-based estimate.
+// Without this, settleAndClose's ordering (archivePoll → syncStatsDb → removePoll → saveState)
+// lets syncStatsDb re-read a state.json that still holds the poll, and the stale estimate
+// upserts over the settled count on the same (date, gameDay) key — the dashboard then showed
+// 5 voters instead of the 10 people who actually played (2026-07-31).
+function mergeGameRows(history, pollRows) {
+  const key = g => (g.date || "") + "|" + (g.gameDay || "");
+  const archived = new Set((history || []).map(key));
+  return (history || []).concat((pollRows || []).filter(p => !archived.has(key(p))));
+}
+
 // Exponential backoff between WhatsApp reconnects: 1s, 2s, 4s … capped (default 5 min).
 // WhatsApp answers a rejected client version with 405 on EVERY attempt, so the old
 // retry-immediately loop hammered the server every ~3s — a fast track to a number-level block.
@@ -146,4 +159,4 @@ function healthReport(now, s, thresholdSec) {
   };
 }
 
-module.exports = { DAY_WORDS, attendanceFromTally, weightOfOptions, parseAnkieta, nextDateForDay, isAdmin, settlementPeople, matchPoll, parseAbsenceDays, activeInjuryLids, reconnectDelay, healthReport };
+module.exports = { DAY_WORDS, attendanceFromTally, weightOfOptions, parseAnkieta, nextDateForDay, isAdmin, settlementPeople, matchPoll, parseAbsenceDays, activeInjuryLids, reconnectDelay, healthReport, mergeGameRows };
