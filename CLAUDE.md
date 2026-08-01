@@ -54,9 +54,12 @@ container**. They survive deploys; tracked files do not (see below).
 1. **Never edit tracked files directly on the container.** `deploy.sh` runs from cron every 3
    minutes and does `git reset --hard origin/main` — live edits are wiped. All code changes go
    through branch → PR → squash-merge.
-2. **No real secrets in the repo.** Secrets live in the container `.env` (`ANTHROPIC_API_KEY`,
-   `PHONE`, `NOTIFY_JID`, `NOTIFY_LID`, `BLIK_NUMBER`, `DATABASE_URL`) and in the private
-   `szemkhel/volley-secrets` repo. `config.example.json` / `.env.example` carry placeholders only.
+2. **No real secrets in the repo — and none on GitHub at all.** Secrets live in the container
+   `.env` (`ANTHROPIC_API_KEY`, `PHONE`, `NOTIFY_JID`, `NOTIFY_LID`, `BLIK_NUMBER`,
+   `DATABASE_URL`, `LOG_LEVEL`), backed up **locally only** to `C:\Users\patry\.claude\volley.env`.
+   `config.example.json` / `.env.example` carry placeholders only. The old private
+   `szemkhel/volley-secrets` repo was deleted on 2026-08-01 — credentials must never leave the
+   local machine, so don't recreate it.
 3. **Every functional change updates all four surfaces** — see the release loop below.
 4. Commit author is `Volley Bot <bot@volley.local>` (the real email is blocked by GitHub privacy).
    Leave it as is.
