@@ -1,5 +1,12 @@
 [
   {
+    "version": "v1.24",
+    "date": "2 sierpnia 2026",
+    "notes": [
+      "Poprawka: po rozliczeniu panel ze statystykami pokazywał przez chwilę liczbę graczy z ankiety zamiast tej realnej, podanej w rozliczeniu. Teraz od razu trafia tam właściwa liczba."
+    ]
+  },
+  {
     "version": "v1.23",
     "date": "2 sierpnia 2026",
     "notes": [

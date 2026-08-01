@@ -1,6 +1,31 @@
 const test = require("node:test");
 const assert = require("node:assert");
-const { attendanceFromTally, weightOfOptions, parseAnkieta, nextDateForDay, isAdmin, settlementPeople, matchPoll, parseAbsenceDays, activeInjuryLids, reconnectDelay, healthReport } = require("../lib");
+const { attendanceFromTally, weightOfOptions, parseAnkieta, nextDateForDay, isAdmin, settlementPeople, matchPoll, parseAbsenceDays, activeInjuryLids, reconnectDelay, healthReport, mergeGameRows } = require("../lib");
+
+test("mergeGameRows: settled history wins over the stale poll estimate", () => {
+  const hist = [{ date: "2026-07-31", gameDay: "friday", players: 10 }];
+  const polls = [{ date: "2026-07-31", gameDay: "friday", players: 5 }];
+  const out = mergeGameRows(hist, polls);
+  assert.strictEqual(out.length, 1);
+  assert.strictEqual(out[0].players, 10);
+});
+
+test("mergeGameRows: poll rows for games not yet archived are kept", () => {
+  const hist = [{ date: "2026-07-24", gameDay: "friday", players: 12 }];
+  const polls = [{ date: "2026-07-31", gameDay: "friday", players: 5 }];
+  assert.deepStrictEqual(mergeGameRows(hist, polls).map(g => g.players), [12, 5]);
+});
+
+test("mergeGameRows: same date, different day is a different game", () => {
+  const hist = [{ date: "2026-07-31", gameDay: "friday", players: 10 }];
+  const polls = [{ date: "2026-07-31", gameDay: "tuesday", players: 6 }];
+  assert.strictEqual(mergeGameRows(hist, polls).length, 2);
+});
+
+test("mergeGameRows: empty/missing inputs", () => {
+  assert.deepStrictEqual(mergeGameRows(null, null), []);
+  assert.deepStrictEqual(mergeGameRows([], [{ date: "2026-07-31", gameDay: "friday" }]).length, 1);
+});
 
 test("reconnectDelay: exponential, capped", () => {
   assert.strictEqual(reconnectDelay(0), 1000);
