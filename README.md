@@ -45,6 +45,11 @@ link pojawia się też pod odpowiedziami na `bot ranking` / `bot frekwencja` / `
 ### Rozliczenie sali
 - `bot rozlicz` — bot zapyta o koszt sali i liczbę graczy, podzieli koszt i wskaże komu ile zapłacić (osoby z +1/+2 płacą za gości), z numerem BLIK
 - `bot rozlicz 100 10` — to samo, ale od razu z danymi (100 zł, 10 osób)
+- `bot koszt sali` — pokazuje zapisany koszt wynajmu; `bot koszt sali 200` ustawia go (admin)
+- Nie musisz używać komend: jeśli ktoś wrzuci na grupę zwykłą wiadomość z podziałem kosztu
+  („po 14,55 zł, BLIK…”), bot sam ją rozpozna i zapisze realną liczbę graczy. Właśnie do tego
+  służy zapisany koszt sali — gdy w wiadomości jest tylko kwota na osobę, bez sumy, bot liczy
+  graczy jako *koszt sali ÷ kwota na osobę*, więc nieaktualna wartość da cichy błąd we frekwencji
 
 ### Inne
 - `bot pomoc` — pełna lista komend
