@@ -1,5 +1,13 @@
 [
   {
+    "version": "v1.25",
+    "date": "3 sierpnia 2026",
+    "notes": [
+      "Poprawka: w poniedziałek 3 sierpnia cotygodniowa ankieta nie wyszła, bo dokładnie w sekundzie wysyłki zerwało połączenie z WhatsAppem. Teraz bot ponawia próbę, a dodatkowo sprawdza co godzinę do 20:00, czy ankieta faktycznie poszła — chwilowa awaria łącza nie kosztuje już całego tygodnia.",
+      "Jeśli mimo wszystko się nie uda, bot powiadomi o tym organizatora zamiast milczeć."
+    ]
+  },
+  {
     "version": "v1.24",
     "date": "2 sierpnia 2026",
     "notes": [

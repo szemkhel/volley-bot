@@ -50,7 +50,9 @@ link pojawia się też pod odpowiedziami na `bot ranking` / `bot frekwencja` / `
 - `bot pomoc` — pełna lista komend
 
 ## 🤖 Co bot robi automatycznie
-- **Poniedziałek 10:00** — wystawia ankietę na najbliższy trening (domyślnie piątek 20:00)
+- **Poniedziałek 10:00** — wystawia ankietę na najbliższy trening (domyślnie piątek 20:00).
+  Jeśli WhatsApp w tym momencie nie odpowiada, bot ponawia próby i sprawdza co godzinę do 20:00,
+  więc chwilowa awaria łącza nie kosztuje całego tygodnia
 - **Przypomnienia** — wtorek 18:00 (pierwsze) i środa 17:00 (ostatnie) dla piątkowego treningu; terminy przesuwają się, gdy gramy w inny dzień
 - **Wtorek 12:00** — jeśli nie ma ankiety, pyta grupę czy gramy
 - **Po treningu** — automatycznie zapisuje frekwencję
