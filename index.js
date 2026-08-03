@@ -1613,18 +1613,50 @@ cron.schedule("0 12 * * 2", async () => {
 // Daily 23:00 — archive the game on its day as "played", stop reminders
 cron.schedule("0 23 * * *", () => { finalizePolls(); }, { timezone: TZ });
 
-// Monday 10:00 — auto-post the weekly poll (default day/time) if none exists yet
-cron.schedule("0 10 * * 1", async () => {
+// Monday — auto-post the weekly poll at 10:00, re-checked hourly until 20:00 as a backstop.
+//
+// A single transient failure used to cost the whole week: on 2026-08-03 the socket dropped (408)
+// in the very second the cron fired, the in-flight send died on WhatsApp's group-metadata query
+// (500), the exception escaped the cron callback, and nobody was told — even though the
+// connection was back 12s later. Reminders got this protection in v1.11 (scheduler.fireReminder);
+// the auto-poll never did. Hence: retry in-place, an hourly backstop, and an owner alert.
+//
+// `state.autoPollWeek` (= that Monday's date) marks the week as HANDLED, so the backstop can't
+// re-post after someone deliberately cancels — pollsForDay() alone would go empty on a cancel
+// and the next hourly tick would happily post again.
+async function autoPostWeeklyPoll() {
   const cfg = loadConfig();
-  if (!cfg.groupJid || !sock) return;
+  if (!cfg.groupJid) return;
   const defDay = cfg.defaultDay || "friday";
+  const week = todayWarsaw();   // cron runs Mondays only, so today IS the week key
+  if (state.autoPollWeek === week) return;
   if (pollsForDay(defDay).length) {
     console.log("[Auto-poll] poll for", defDay, "already exists — skipping");
+    state.autoPollWeek = week; saveState(state);
     return;
   }
   console.log("[Auto-poll] posting weekly poll:", defDay, cfg.defaultTime);
-  await createPoll(cfg, defDay, cfg.defaultTime || "20:00", cfg.groupJid);
-}, { timezone: TZ });
+  const maxAttempts = 10;
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      if (!getSock()) throw new Error("socket not connected");
+      // Read the live socket each attempt — `sock` is reassigned on every reconnect.
+      const name = await createPoll(cfg, defDay, cfg.defaultTime || "20:00", cfg.groupJid);
+      state.autoPollWeek = week; saveState(state);
+      console.log("[Auto-poll] posted:", name);
+      return;
+    } catch (e) {
+      console.error(`[Auto-poll] attempt ${attempt}/${maxAttempts} failed:`, e.message);
+      if (attempt === maxAttempts) {
+        // Don't mark the week handled — the hourly backstop gets another go.
+        try { await notify(getSock(), cfg, "⚠️ Nie udało się wystawić cotygodniowej ankiety (" + e.message + "). Spróbuję ponownie za godzinę."); } catch (_) {}
+        return;
+      }
+      await new Promise(r => setTimeout(r, 30000));
+    }
+  }
+}
+cron.schedule("0 10-20 * * 1", autoPostWeeklyPoll, { timezone: TZ });
 
 // Nightly 03:00 — backup data files (keep last 14 days)
 cron.schedule("0 3 * * *", backupData, { timezone: TZ });
