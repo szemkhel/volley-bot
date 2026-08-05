@@ -50,6 +50,14 @@ link pojawia się też pod odpowiedziami na `bot ranking` / `bot frekwencja` / `
   („po 14,55 zł, BLIK…”), bot sam ją rozpozna i zapisze realną liczbę graczy. Właśnie do tego
   służy zapisany koszt sali — gdy w wiadomości jest tylko kwota na osobę, bez sumy, bot liczy
   graczy jako *koszt sali ÷ kwota na osobę*, więc nieaktualna wartość da cichy błąd we frekwencji
+- Po zamknięciu rozliczenia bot proponuje głosowanie MVP i pokazuje listę kandydatów (osoby, które
+  zadeklarowały grę). Odpowiedz `tak`, żeby je wystawić, albo `nie`. Efekt jest identyczny jak przy
+  `bot mvp` — to ta sama ankieta
+
+### Głosowanie MVP
+- `bot mvp` — wystawia ankietę „MVP tygodnia” z graczami ostatniego meczu (admin). Zamyka się
+  automatycznie po 24 h, a zwycięzca dostaje gratulacje i trafia do panelu ze statystykami
+- Bot sam zaproponuje to głosowanie po każdym rozliczeniu, więc zwykle nie musisz o nim pamiętać
 
 ### Inne
 - `bot pomoc` — pełna lista komend
