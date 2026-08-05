@@ -104,6 +104,25 @@ function activeInjuryLids(injuries, today) {
   return out;
 }
 
+// "Kort" is a TENNIS court — we rent a hala / sala / boisko. It leaked into reminders from our own
+// prompt text. Detect rather than substitute: Polish case endings make a blind kort→sala swap
+// ungrammatical ("zarezerwować kort" → "zarezerwować sala"), so callers regenerate instead.
+// The `cie` branch is not redundant: the locative palatalises t→c ("na korcie"), so a plain
+// "kort" stem misses it — which is exactly the form the model likes to use.
+function hasBannedVenueWord(text) {
+  return /\bkor(?:t\w*|cie)/i.test(text || "");
+}
+
+// LID user-parts that picked a given poll option. voters = { lid: { jid, options[] } }.
+function votersChoosing(voters, label) {
+  const out = [];
+  for (const lid in (voters || {})) {
+    const opts = (voters[lid] && voters[lid].options) || [];
+    if (opts.indexOf(label) >= 0) out.push(lid);
+  }
+  return out;
+}
+
 // Dashboard rows = archived history + games still sitting as active polls (date passed, not yet
 // settled). When BOTH describe the same game, HISTORY WINS: it carries the settled headcount,
 // while the poll row only ever has the vote-based estimate.
@@ -159,4 +178,4 @@ function healthReport(now, s, thresholdSec) {
   };
 }
 
-module.exports = { DAY_WORDS, attendanceFromTally, weightOfOptions, parseAnkieta, nextDateForDay, isAdmin, settlementPeople, matchPoll, parseAbsenceDays, activeInjuryLids, reconnectDelay, healthReport, mergeGameRows };
+module.exports = { DAY_WORDS, attendanceFromTally, weightOfOptions, parseAnkieta, nextDateForDay, isAdmin, settlementPeople, matchPoll, parseAbsenceDays, activeInjuryLids, reconnectDelay, healthReport, mergeGameRows, hasBannedVenueWord, votersChoosing };

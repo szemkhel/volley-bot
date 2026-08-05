@@ -301,8 +301,13 @@ async function closeMvpPoll(cfg) {
   mvp.push({ date: new Date().toISOString().slice(0, 10), phone: winner.phone, name: winner.name, votes: top.c });
   saveMvp(mvp);
   const congrats = await generateMvpCongrats(winner.name, top.c, cfg);
-  const mentions = winner.phone ? [winner.phone.indexOf("@") >= 0 ? winner.phone : (winner.phone + "@lid")] : [];
-  const tag = winner.phone ? ("@" + winner.phone) : winner.name;
+  // An MVP who left the group can't be tagged — fall back to the plain name rather than a dead @tag.
+  const winnerPhone = winner.phone ? winner.phone.split("@")[0] : null;
+  const members = await currentMemberPhones(cfg);
+  const canTag = !!winnerPhone && (!members || members.has(winnerPhone));
+  if (winnerPhone && !canTag) console.log("[MVP] winner", winner.name, "no longer in the group — no @mention");
+  const mentions = canTag ? [winnerPhone + "@lid"] : [];
+  const tag = canTag ? ("@" + winnerPhone) : winner.name;
   await sock.sendMessage(cfg.groupJid, { text: "🏆 MVP tygodnia: " + tag + " (" + top.c + " głosów)!\n" + congrats, mentions });
   state.mvpPoll = null; saveState(state);
   console.log("MVP closed, winner:", winner.name, top.c);
@@ -506,29 +511,40 @@ async function createPoll(cfg, day, time, targetJid) {
   return name;
 }
 
-function buildSettlement(cost, realPeople, cfg, poll) {
+// memberPhones = Set of LID user-parts currently in the group, or null when unknown.
+// Someone who voted and then LEFT still owes for the game, so they stay in `accounted` and keep
+// their line — but they're named in plain text instead of @-tagged, because a mention of a
+// non-member renders as a dead tag for everyone in the chat.
+function buildSettlement(cost, realPeople, cfg, poll, memberPhones) {
   const NL = String.fromCharCode(10);
   const perUnit = cost / realPeople;
+  const contacts = loadContacts();
   const groups = {};
   let accounted = 0;
+  let dropped = 0;
   const voters = (poll && poll.voters) || {};
   for (const phone in voters) {
     const v = voters[phone];
     const w = weightOfOptions(v.options);
     if (w <= 0) continue;
     accounted += w;
+    const isMember = !memberPhones || memberPhones.has(phone);
+    if (!isMember) dropped++;
     const amount = Math.round(perUnit * w);
-    (groups[amount] = groups[amount] || []).push(v.jid);
+    (groups[amount] = groups[amount] || []).push({ jid: v.jid, phone: phone, isMember: isMember });
   }
   const lines = ["Rozliczenie sali:"];
   const mentions = [];
   const amounts = Object.keys(groups).map(Number).sort(function (a, b) { return a - b; });
   for (const amt of amounts) {
-    const jids = groups[amt];
-    for (const j of jids) mentions.push(j);
-    const tags = jids.map(function (j) { return "@" + j.split("@")[0]; }).join(", ");
+    const people = groups[amt];
+    for (const p of people) if (p.isMember) mentions.push(p.jid);
+    const tags = people.map(function (p) {
+      return p.isMember ? ("@" + p.phone) : (contacts[p.phone] || ("Gracz " + p.phone.slice(-4)));
+    }).join(", ");
     lines.push(amt + "pln " + tags);
   }
+  if (dropped > 0) console.log("[Settlement]", dropped, "payer(s) no longer in the group — named without @mention");
   const diff = realPeople - accounted;
   if (diff > 0) lines.push("(" + diff + " os. spoza ankiety — ok. " + Math.round(perUnit) + "pln/os.)");
   lines.push("Proszę o wpłatę blikiem na numer " + (cfg.blikNumber || "BRAK"));
@@ -613,8 +629,21 @@ async function handlePlayerUpdateAnswer(text, senderPhone, isFromMe, cfg) {
   return true;
 }
 
+// LID user-parts currently in the group, or null if the lookup fails. Callers must treat null as
+// "membership unknown" and FAIL OPEN — a metadata hiccup must never block a settlement or MVP.
+async function currentMemberPhones(cfg) {
+  try {
+    const md = await sock.groupMetadata(cfg.groupJid);
+    const set = new Set((md.participants || []).map(p => p.id.split("@")[0]));
+    return set.size ? set : null;
+  } catch (e) {
+    console.error("[Members] group metadata lookup failed:", e.message, "— skipping membership filter");
+    return null;
+  }
+}
+
 async function doSettlement(cfg, cost, people) {
-  const st = buildSettlement(cost, people, cfg, primaryPoll());
+  const st = buildSettlement(cost, people, cfg, primaryPoll(), await currentMemberPhones(cfg));
   await sock.sendMessage(cfg.groupJid, { text: st.text, mentions: st.mentions });
   settleAndClose(people);
   state.pendingRozliczenie = null;

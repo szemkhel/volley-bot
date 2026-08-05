@@ -1,5 +1,14 @@
 [
   {
+    "version": "v1.26",
+    "date": "5 sierpnia 2026",
+    "notes": [
+      "Ostatnie przypomnienie (zwykle środowe) dopytuje teraz również osoby, które zagłosowały „Nie wiem” — środa to ostatni dzień na odwołanie sali, więc bot prosi o potwierdzenie.",
+      "Bot przestał mówić „kort” — wynajmujemy halę, salę albo boisko, a kort to co innego.",
+      "Bot oznacza (@) wyłącznie osoby aktualnie należące do grupy. Kto z niej wyszedł, nie dostanie już martwego oznaczenia w rozliczeniu ani przy MVP — pojawi się pod samym imieniem."
+    ]
+  },
+  {
     "version": "v1.25",
     "date": "3 sierpnia 2026",
     "notes": [
