@@ -1,6 +1,35 @@
 const test = require("node:test");
 const assert = require("node:assert");
-const { attendanceFromTally, weightOfOptions, parseAnkieta, nextDateForDay, isAdmin, settlementPeople, matchPoll, parseAbsenceDays, activeInjuryLids, reconnectDelay, healthReport, mergeGameRows } = require("../lib");
+const { attendanceFromTally, weightOfOptions, parseAnkieta, nextDateForDay, isAdmin, settlementPeople, matchPoll, parseAbsenceDays, activeInjuryLids, reconnectDelay, healthReport, mergeGameRows, hasBannedVenueWord, votersChoosing } = require("../lib");
+
+test("hasBannedVenueWord: catches kort and its declensions", () => {
+  assert.strictEqual(hasBannedVenueWord("musimy zarezerwować kort"), true);
+  assert.strictEqual(hasBannedVenueWord("rezerwacja kortu na piątek"), true);
+  assert.strictEqual(hasBannedVenueWord("gramy na korcie"), true);
+  assert.strictEqual(hasBannedVenueWord("KORTY są wolne"), true);
+});
+
+test("hasBannedVenueWord: leaves correct venue words and lookalikes alone", () => {
+  assert.strictEqual(hasBannedVenueWord("musimy zarezerwować salę"), false);
+  assert.strictEqual(hasBannedVenueWord("gramy w hali na boisku"), false);
+  assert.strictEqual(hasBannedVenueWord("komfortowa hala"), false);   // "kort" not at a word start
+  assert.strictEqual(hasBannedVenueWord(""), false);
+  assert.strictEqual(hasBannedVenueWord(null), false);
+});
+
+test("votersChoosing: picks only the given option", () => {
+  const voters = {
+    "111": { jid: "111@lid", options: ["Gram"] },
+    "222": { jid: "222@lid", options: ["Nie wiem"] },
+    "333": { jid: "333@lid", options: ["Nie gram"] },
+    "444": { jid: "444@lid", options: ["Nie wiem"] },
+    "555": { jid: "555@lid" },
+  };
+  assert.deepStrictEqual(votersChoosing(voters, "Nie wiem").sort(), ["222", "444"]);
+  assert.deepStrictEqual(votersChoosing(voters, "Gram"), ["111"]);
+  assert.deepStrictEqual(votersChoosing({}, "Nie wiem"), []);
+  assert.deepStrictEqual(votersChoosing(null, "Nie wiem"), []);
+});
 
 test("mergeGameRows: settled history wins over the stale poll estimate", () => {
   const hist = [{ date: "2026-07-31", gameDay: "friday", players: 10 }];

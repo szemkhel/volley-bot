@@ -58,7 +58,12 @@ link pojawia się też pod odpowiedziami na `bot ranking` / `bot frekwencja` / `
 - **Poniedziałek 10:00** — wystawia ankietę na najbliższy trening (domyślnie piątek 20:00).
   Jeśli WhatsApp w tym momencie nie odpowiada, bot ponawia próby i sprawdza co godzinę do 20:00,
   więc chwilowa awaria łącza nie kosztuje całego tygodnia
-- **Przypomnienia** — wtorek 18:00 (pierwsze) i środa 17:00 (ostatnie) dla piątkowego treningu; terminy przesuwają się, gdy gramy w inny dzień
+- **Przypomnienia** — wtorek 18:00 (pierwsze) i środa 17:00 (ostatnie) dla piątkowego treningu;
+  terminy przesuwają się, gdy gramy w inny dzień. Pierwsze zagaduje tych, którzy jeszcze nie
+  zagłosowali. **Ostatnie dodatkowo dopytuje osoby z „Nie wiem"** — to już ostatni dzień na
+  odwołanie sali, więc niezdecydowany głos nie pomaga bardziej niż brak głosu
+- Bot oznacza (@) tylko osoby **aktualnie należące do grupy** — skład sprawdza na żywo przed
+  każdym przypomnieniem, rozliczeniem i ogłoszeniem MVP, żeby nie zostawiać martwych oznaczeń
 - **Wtorek 12:00** — jeśli nie ma ankiety, pyta grupę czy gramy
 - **Po treningu** — automatycznie zapisuje frekwencję
 - Czyta wiadomości przy ankiecie i sam wykrywa, gdy gramy w inny dzień niż zwykle

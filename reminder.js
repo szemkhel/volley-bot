@@ -1,6 +1,10 @@
 const Anthropic = require("@anthropic-ai/sdk");
 const fs = require("fs");
 const path = require("path");
+const { hasBannedVenueWord, votersChoosing } = require("./lib");
+
+// The poll option that means "still undecided" — must match POLL_OPTIONS in index.js.
+const UNDECIDED_OPTION = "Nie wiem";
 
 // Stronger model for creative Polish prose; cheap model for classification.
 const CREATIVE_MODEL = "claude-sonnet-4-6";
@@ -118,23 +122,31 @@ async function generateReminder(nonVoters, config, isUrgent, gameDay = "friday")
     const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY || config.anthropicApiKey });
 
     const urgency = isUrgent
-      ? `To ostatnie przypomnienie przed ${dayPl}iem - musimy wiedzieć czy rezerwować kort!`
+      ? `To ostatnie przypomnienie przed ${dayPl}iem - musimy wiedzieć, czy rezerwować salę!`
       : `To pierwsze przypomnienie w tym tygodniu.`;
 
-    const resp = await client.messages.create({
-      model: CREATIVE_MODEL,
-      max_tokens: 400,
-      messages: [{
-        role: "user",
-        content: `Napisz krótką wiadomość po polsku (1-2 zdania) do grupy znajomych przypominającą o głosowaniu w ankiecie na volleyball w ${dayPl}. ` +
-          `Ton: ciepły, żartobliwy i koleżeński - jakbyś pisał do przyjaciół. Zero złośliwości ani zawstydzania. ` +
-          `Bez formatowania markdown (bez #, **, itp). ` +
-          urgency + ` Osoby które nie głosowały: ${names.join(", ")}. ` +
-          `Użyj @imię dla każdej osoby dokładnie tak jak podano, bez polskich znaków w @wzmiankach.`
-      }]
-    });
+    const content = `Napisz krótką wiadomość po polsku (1-2 zdania) do grupy znajomych przypominającą o głosowaniu w ankiecie na volleyball w ${dayPl}. ` +
+      `Ton: ciepły, żartobliwy i koleżeński - jakbyś pisał do przyjaciół. Zero złośliwości ani zawstydzania. ` +
+      `Bez formatowania markdown (bez #, **, itp). ` +
+      // Volleyball is played in a hall, not on a court. "Kort" belongs to tennis and reads wrong
+      // to the group, so it is forbidden outright rather than merely discouraged.
+      `Gramy w HALI (poprawne słowa: hala, sala, boisko). NIGDY nie używaj słowa "kort" ani jego odmian - to słowo z tenisa i jest błędne. ` +
+      urgency + ` Osoby które nie głosowały: ${names.join(", ")}. ` +
+      `Użyj @imię dla każdej osoby dokładnie tak jak podano, bez polskich znaków w @wzmiankach.`;
 
-    return stripMarkdown(resp.content[0].text);
+    // The model still reaches for "kort" now and then. Regenerate instead of substituting —
+    // Polish declension makes a blind swap ungrammatical. Two strikes, then the safe template.
+    for (let attempt = 1; attempt <= 2; attempt++) {
+      const resp = await client.messages.create({
+        model: CREATIVE_MODEL,
+        max_tokens: 400,
+        messages: [{ role: "user", content }]
+      });
+      const out = stripMarkdown(resp.content[0].text);
+      if (!hasBannedVenueWord(out)) return out;
+      console.warn(`generateReminder: model used "kort" (attempt ${attempt}/2) — regenerating`);
+    }
+    return fallback(nonVoters, contacts, dayPl);
   } catch (err) {
     console.error("Claude API error:", err.message);
     return fallback(nonVoters, contacts, dayPl);
@@ -172,24 +184,44 @@ async function sendReminder(sock, poll, config, isUrgent, excludePhones) {
     const exclude = new Set(excludePhones || []);
     const nonVoters = participants.filter(p => !voters[p.phone] && !exclude.has(p.phone));
 
-    if (nonVoters.length === 0) {
+    // On the LAST reminder the "Nie wiem" crowd matters as much as the silent one: this is the
+    // final day the hall can still be cancelled, so an undecided vote is no more useful than
+    // no vote. Only chased on the urgent run — nagging them on day one would be pushy.
+    // `participants` comes from live groupMetadata, so anyone who left the group is already gone
+    // from both lists and can't be tagged.
+    const undecidedLids = isUrgent ? votersChoosing(voters, UNDECIDED_OPTION) : [];
+    const undecided = participants.filter(p => undecidedLids.indexOf(p.phone) >= 0 && !exclude.has(p.phone));
+
+    if (nonVoters.length === 0 && undecided.length === 0) {
       console.log("Everyone voted! No reminder needed.");
       return { everyoneVoted: true };
     }
 
     const day = poll.gameDay || "friday";
-    console.log("Sending reminder to", nonVoters.length, "non-voters (game day:", day + ")...");
-    let text = await generateReminder(nonVoters, config, isUrgent, day);
+    console.log("Sending reminder to", nonVoters.length, "non-voters +", undecided.length, "undecided (game day:", day + ")...");
 
-    for (const v of nonVoters) {
-      const displayName = v.name || v.phone;
-      text = text.replace(new RegExp("@" + displayName, "gi"), "@" + v.phone);
+    let text = "";
+    if (nonVoters.length) {
+      text = await generateReminder(nonVoters, config, isUrgent, day);
+      for (const v of nonVoters) {
+        const displayName = v.name || v.phone;
+        text = text.replace(new RegExp("@" + displayName, "gi"), "@" + v.phone);
+      }
     }
 
-    const mentions = nonVoters.map(v => v.jid);
+    // Deterministic, not AI-written: the mentions must resolve exactly and the deadline must be
+    // stated plainly. Letting the model juggle two groups risked mangled @tags.
+    if (undecided.length) {
+      const tags = undecided.map(v => "@" + v.phone).join(" ");
+      const line = tags + " - macie w ankiecie \"" + UNDECIDED_OPTION + "\". " +
+        "Dziś ostatni dzień, żeby odwołać salę, więc dajcie znać, czy gracie. 🏐";
+      text = text ? text + "\n\n" + line : line;
+    }
+
+    const mentions = nonVoters.concat(undecided).map(v => v.jid);
     await sock.sendMessage(config.groupJid, { text, mentions });
     console.log("Reminder sent!");
-    return { count: nonVoters.length, day };
+    return { count: nonVoters.length, undecided: undecided.length, day };
   } catch (err) {
     console.error("Failed to send reminder:", err.message);
     return { error: err.message };
