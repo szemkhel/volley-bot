@@ -246,23 +246,45 @@ async function recordMvpVote(pollUpdate, voterJid) {
   console.log("MVP vote:", phone, "->", option || "(none)");
 }
 
-async function createMvpPoll(cfg) {
+// Who can be voted MVP: players who declared "yes" (weight > 0) for the most recent played game.
+// After a settlement that game is already archived, so history's `attendees` IS that list; the
+// open-poll branch covers a manual `bot mvp` fired before any settlement. Shared with
+// offerMvpPoll() so the names in the question can't drift from the names on the poll.
+function mvpCandidates() {
   const contacts = loadContacts();
   const hist = loadHistory();
-  let src = null;
   for (let i = hist.length - 1; i >= 0; i--) {
-    if (hist[i].status !== "cancelled" && hist[i].attendees && hist[i].attendees.length) { src = hist[i].attendees; break; }
-  }
-  let candidates = [];
-  const pp = primaryPoll();
-  if (src) candidates = src.map(a => ({ phone: a.phone, name: a.name || contacts[a.phone] || ("Gracz " + a.phone.slice(-4)) }));
-  else if (pp) {
-    for (const phone in pp.voters) {
-      if (weightOfOptions(pp.voters[phone].options) > 0) candidates.push({ phone: phone, name: contacts[phone] || ("Gracz " + phone.slice(-4)) });
+    const h = hist[i];
+    if (h.status !== "cancelled" && h.attendees && h.attendees.length) {
+      return h.attendees.map(a => ({ phone: a.phone, name: a.name || contacts[a.phone] || ("Gracz " + a.phone.slice(-4)) }));
     }
   }
-  if (candidates.length < 2) { await sock.sendMessage(cfg.groupJid, { text: "Za mało graczy z ostatniego meczu na głosowanie MVP. 🏐" }); return; }
-  candidates = candidates.slice(0, 12);
+  const pp = primaryPoll();
+  const out = [];
+  if (pp) {
+    for (const phone in pp.voters) {
+      if (weightOfOptions(pp.voters[phone].options) > 0) out.push({ phone: phone, name: contacts[phone] || ("Gracz " + phone.slice(-4)) });
+    }
+  }
+  return out;
+}
+
+// HARD WhatsApp limit: a poll accepts at most 12 options (100 chars each). This is NOT our
+// choice — Baileys does not validate it, so sending more just gets the poll rejected server-side
+// and no vote appears at all. Do not raise this without a different voting mechanism.
+const MVP_MAX_OPTIONS = 12;
+
+async function createMvpPoll(cfg) {
+  const all = mvpCandidates();
+  if (all.length < 2) { await sock.sendMessage(cfg.groupJid, { text: "Za mało graczy z ostatniego meczu na głosowanie MVP. 🏐" }); return; }
+  let candidates = all.slice(0, MVP_MAX_OPTIONS);
+  // More players than poll slots: they used to be dropped silently, which is unfair to whoever
+  // happened to sit past position 12. Still truncated (nothing else fits), but now it's visible.
+  const omitted = all.slice(MVP_MAX_OPTIONS);
+  if (omitted.length) {
+    console.log("[MVP] " + omitted.length + " player(s) did not fit the 12-option poll:", omitted.map(c => c.name).join(", "));
+    await notify(sock, cfg, "⚠️ MVP: zagrało " + all.length + " osób, a ankieta WhatsAppa mieści 12. Nie zmieścili się: " + omitted.map(c => c.name).join(", ") + ".");
+  }
   const seenN = {};
   const finalOpts = candidates.map(c => { let n = c.name; if (seenN[n]) { seenN[n]++; n = n + " (" + seenN[n] + ")"; } else seenN[n] = 1; return n; });
   const concludeAt = Date.now() + 24 * 60 * 60 * 1000;
@@ -600,6 +622,7 @@ async function detectSettlement(text, authorPhone, cfg) {
     settleAndClose(people);
     await sock.sendMessage(cfg.groupJid, { text: "📊 Zapisuję liczbę graczy z rozliczenia: " + people + " i zamykam grę. 🏐" });
     await notify(sock, cfg, "Rozliczenie wykryte: " + people + " graczy (zgodne z zapisem).");
+    await offerMvpPoll(cfg, authorPhone);
     return;
   }
   state.pendingPlayerUpdate = { detected: people, current: current, authorPhone: authorPhone, ts: Date.now() };
@@ -622,10 +645,42 @@ async function handlePlayerUpdateAnswer(text, senderPhone, isFromMe, cfg) {
     state.pendingPlayerUpdate = null; saveState(state);
     await sock.sendMessage(cfg.groupJid, { text: "✅ Zaktualizowano liczbę graczy na " + p.detected + " i zamknąłem rozliczenie. 🏐" });
     await notify(sock, cfg, "Liczba graczy zaktualizowana z rozliczenia na " + p.detected + ".");
+    await offerMvpPoll(cfg, p.authorPhone);
   } else {
     state.pendingPlayerUpdate = null; saveState(state);
     await sock.sendMessage(cfg.groupJid, { text: "Ok, zostawiam " + (p.current != null ? p.current : "obecną liczbę") + " graczy." });
   }
+  return true;
+}
+
+// A settlement is the moment the game is definitively closed and the attendee list is final —
+// the natural point to run an MVP vote. Ask rather than post unprompted: not every game warrants
+// one. Fired from every settlement path (auto-detected and `bot rozlicz`), since all of them
+// funnel through settleAndClose().
+async function offerMvpPoll(cfg, authorPhone) {
+  if (state.mvpPoll) return;                      // a vote is already running
+  const cands = mvpCandidates();
+  if (cands.length < 2) return;                   // createMvpPoll would refuse anyway — don't ask
+  state.pendingMvpOffer = { authorPhone: authorPhone || null, ts: Date.now() };
+  saveState(state);
+  const names = cands.slice(0, MVP_MAX_OPTIONS).map(c => c.name).join(", ");
+  await sock.sendMessage(cfg.groupJid, { text: "🏆 Zrobić głosowanie MVP za ten mecz?" + String.fromCharCode(10) + "Kandydaci: " + names + "." + String.fromCharCode(10) + "Napisz tak/nie." });
+}
+
+async function handleMvpOfferAnswer(text, senderPhone, isFromMe, cfg) {
+  const p = state.pendingMvpOffer;
+  if (!p) return false;
+  if (Date.now() - (p.ts || 0) > 30 * 60 * 1000) { state.pendingMvpOffer = null; saveState(state); return false; }
+  const low = (text || "").trim().toLowerCase();
+  const yes = /^(tak|t|ok|jasne|dawaj|wystaw|potwierdzam)\b/.test(low);
+  const no = /^(nie|n|pomiń|pomin|anuluj|bez)\b/.test(low);
+  if (!yes && !no) return false;
+  // Same rule as the player-count confirmation: whoever posted the settlement, or any admin.
+  const allowed = (senderPhone && senderPhone === p.authorPhone) || isAdmin(senderPhone, isFromMe, cfg.admins || [], (cfg.notifyLid || "").split("@")[0]);
+  if (!allowed) return false;
+  state.pendingMvpOffer = null; saveState(state);
+  if (yes) await createMvpPoll(cfg);
+  else await sock.sendMessage(cfg.groupJid, { text: "Ok, bez głosowania MVP w tym tygodniu. 🏐" });
   return true;
 }
 
@@ -649,6 +704,7 @@ async function doSettlement(cfg, cost, people) {
   state.pendingRozliczenie = null;
   saveState(state);
   await notify(sock, cfg, "Rozliczenie wysłane: " + cost + "pln / " + people + " osób.");
+  await offerMvpPoll(cfg, null);
   return true;
 }
 
@@ -1399,6 +1455,9 @@ async function connectToWhatsApp() {
           const aPhone = (msg.key.participant || msg.key.remoteJid || "").split("@")[0];
           let consumed = false;
           if (state.pendingPlayerUpdate) consumed = await handlePlayerUpdateAnswer(stext, aPhone, !!msg.key.fromMe, cfg);
+          // MVP offer comes AFTER the player-count question, so a "tak" can never be stolen from it.
+          // In practice they never overlap: the offer is only created once that one is resolved.
+          if (!consumed && state.pendingMvpOffer) consumed = await handleMvpOfferAnswer(stext, aPhone, !!msg.key.fromMe, cfg);
           if (consumed) continue;
           await detectSettlement(stext, aPhone, cfg);
         }

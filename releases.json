@@ -1,5 +1,13 @@
 [
   {
+    "version": "v1.27",
+    "date": "5 sierpnia 2026",
+    "notes": [
+      "Po zamknięciu rozliczenia bot sam proponuje głosowanie MVP i pokazuje listę kandydatów (osoby, które zadeklarowały grę). Odpowiedz „tak”, żeby je wystawić — efekt jest identyczny jak przy komendzie „bot mvp”.",
+      "Jeśli zagrało więcej niż 12 osób, bot zgłosi organizatorowi, kto nie zmieścił się w ankiecie — ankieta WhatsAppa przyjmuje maksymalnie 12 opcji. Wcześniej takie osoby wypadały bez śladu."
+    ]
+  },
+  {
     "version": "v1.26",
     "date": "5 sierpnia 2026",
     "notes": [
