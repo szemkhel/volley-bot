@@ -104,6 +104,41 @@ function activeInjuryLids(injuries, today) {
   return out;
 }
 
+// Games attended per player (LID user-part) across archived history. Cancelled games don't count.
+function attendanceCounts(history) {
+  const counts = {};
+  for (const h of (history || [])) {
+    if (!h || h.status === "cancelled") continue;
+    for (const a of (h.attendees || [])) {
+      if (a && a.phone) counts[a.phone] = (counts[a.phone] || 0) + 1;
+    }
+  }
+  return counts;
+}
+
+// A WhatsApp poll holds at most 12 options, but more than 12 people can play. Rather than keeping
+// whoever happens to sit first in the list, keep the most regular players — season attendance
+// desc, stable so equal counts preserve the original order (deterministic across runs).
+function pickTopByAttendance(candidates, counts, limit) {
+  const list = (candidates || []).slice();
+  if (!limit || list.length <= limit) return list;
+  return list
+    .map((c, i) => ({ c: c, i: i, n: (counts || {})[c.phone] || 0 }))
+    .sort((a, b) => (b.n - a.n) || (a.i - b.i))
+    .slice(0, limit)
+    .map(x => x.c);
+}
+
+// Whole days from `today` until `dateStr` (both "YYYY-MM-DD"). Negative = already past.
+// Anchored at noon so a DST shift can't turn a boundary into an off-by-one.
+function daysUntil(dateStr, today) {
+  if (!dateStr || !today) return null;
+  const a = new Date(today + "T12:00:00");
+  const b = new Date(dateStr + "T12:00:00");
+  if (isNaN(a) || isNaN(b)) return null;
+  return Math.round((b - a) / 86400000);
+}
+
 // "Kort" is a TENNIS court — we rent a hala / sala / boisko. It leaked into reminders from our own
 // prompt text. Detect rather than substitute: Polish case endings make a blind kort→sala swap
 // ungrammatical ("zarezerwować kort" → "zarezerwować sala"), so callers regenerate instead.
@@ -178,4 +213,4 @@ function healthReport(now, s, thresholdSec) {
   };
 }
 
-module.exports = { DAY_WORDS, attendanceFromTally, weightOfOptions, parseAnkieta, nextDateForDay, isAdmin, settlementPeople, matchPoll, parseAbsenceDays, activeInjuryLids, reconnectDelay, healthReport, mergeGameRows, hasBannedVenueWord, votersChoosing };
+module.exports = { DAY_WORDS, attendanceFromTally, weightOfOptions, parseAnkieta, nextDateForDay, isAdmin, settlementPeople, matchPoll, parseAbsenceDays, activeInjuryLids, reconnectDelay, healthReport, mergeGameRows, hasBannedVenueWord, votersChoosing, attendanceCounts, pickTopByAttendance, daysUntil };

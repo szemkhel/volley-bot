@@ -1,6 +1,44 @@
 const test = require("node:test");
 const assert = require("node:assert");
-const { attendanceFromTally, weightOfOptions, parseAnkieta, nextDateForDay, isAdmin, settlementPeople, matchPoll, parseAbsenceDays, activeInjuryLids, reconnectDelay, healthReport, mergeGameRows, hasBannedVenueWord, votersChoosing } = require("../lib");
+const { attendanceFromTally, weightOfOptions, parseAnkieta, nextDateForDay, isAdmin, settlementPeople, matchPoll, parseAbsenceDays, activeInjuryLids, reconnectDelay, healthReport, mergeGameRows, hasBannedVenueWord, votersChoosing, attendanceCounts, pickTopByAttendance, daysUntil } = require("../lib");
+
+test("attendanceCounts: counts played games only", () => {
+  const hist = [
+    { status: "played", attendees: [{ phone: "111" }, { phone: "222" }] },
+    { status: "played", attendees: [{ phone: "111" }] },
+    { status: "cancelled", attendees: [{ phone: "333" }] },
+    { status: "played" },
+  ];
+  assert.deepStrictEqual(attendanceCounts(hist), { "111": 2, "222": 1 });
+  assert.deepStrictEqual(attendanceCounts(null), {});
+});
+
+test("pickTopByAttendance: keeps the most regular players", () => {
+  const cands = [{ phone: "a" }, { phone: "b" }, { phone: "c" }, { phone: "d" }];
+  const counts = { a: 1, b: 9, c: 5, d: 0 };
+  assert.deepStrictEqual(pickTopByAttendance(cands, counts, 2).map(c => c.phone), ["b", "c"]);
+});
+
+test("pickTopByAttendance: under the limit returns everyone, order untouched", () => {
+  const cands = [{ phone: "a" }, { phone: "b" }];
+  assert.deepStrictEqual(pickTopByAttendance(cands, { a: 0, b: 7 }, 12).map(c => c.phone), ["a", "b"]);
+  assert.deepStrictEqual(pickTopByAttendance(cands, {}, 0).map(c => c.phone), ["a", "b"]);
+});
+
+test("pickTopByAttendance: ties keep original order (deterministic)", () => {
+  const cands = [{ phone: "x" }, { phone: "y" }, { phone: "z" }];
+  assert.deepStrictEqual(pickTopByAttendance(cands, { x: 3, y: 3, z: 3 }, 2).map(c => c.phone), ["x", "y"]);
+  assert.deepStrictEqual(pickTopByAttendance(cands, {}, 2).map(c => c.phone), ["x", "y"]);
+});
+
+test("daysUntil: whole days, sign, and bad input", () => {
+  assert.strictEqual(daysUntil("2026-08-07", "2026-08-05"), 2);
+  assert.strictEqual(daysUntil("2026-08-05", "2026-08-05"), 0);
+  assert.strictEqual(daysUntil("2026-08-03", "2026-08-05"), -2);
+  assert.strictEqual(daysUntil("2026-11-01", "2026-10-25"), 7);   // spans the DST change
+  assert.strictEqual(daysUntil(null, "2026-08-05"), null);
+  assert.strictEqual(daysUntil("nonsense", "2026-08-05"), null);
+});
 
 test("hasBannedVenueWord: catches kort and its declensions", () => {
   assert.strictEqual(hasBannedVenueWord("musimy zarezerwować kort"), true);

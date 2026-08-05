@@ -1,5 +1,13 @@
 [
   {
+    "version": "v1.28",
+    "date": "5 sierpnia 2026",
+    "notes": [
+      "Gdy zagrało więcej niż 12 osób, do ankiety MVP trafia teraz 12 graczy z najwyższą frekwencją w sezonie, a nie pierwszych z listy. Ankieta WhatsAppa nie przyjmuje więcej niż 12 opcji.",
+      "„bot przypomnij” użyty na 2 dni lub mniej przed grą działa jak ostatnie wołanie — dopytuje również osoby z głosem „Nie wiem”."
+    ]
+  },
+  {
     "version": "v1.27",
     "date": "5 sierpnia 2026",
     "notes": [

@@ -7,7 +7,7 @@ const path = require("path");
 const cron = require("node-cron");
 const http = require("http");
 const { notify } = require("./notify");
-const { DAY_WORDS, attendanceFromTally, weightOfOptions, parseAnkieta, nextDateForDay, isAdmin, settlementPeople, matchPoll, parseAbsenceDays, activeInjuryLids, reconnectDelay, healthReport, mergeGameRows } = require("./lib");
+const { DAY_WORDS, attendanceFromTally, weightOfOptions, parseAnkieta, nextDateForDay, isAdmin, settlementPeople, matchPoll, parseAbsenceDays, activeInjuryLids, reconnectDelay, healthReport, mergeGameRows, attendanceCounts, pickTopByAttendance, daysUntil } = require("./lib");
 
 const DIR = __dirname;
 const STATE_FILE = path.join(DIR, "state.json");
@@ -177,6 +177,15 @@ function primaryPoll() {
 }
 function removePoll(poll) { state.polls = allPolls().filter(p => p !== poll); }
 
+// A MANUAL `bot przypomnij` this close to the game is a last call, so it should behave like the
+// scheduled urgent run — i.e. also chase the "Nie wiem" voters, since there's barely time left to
+// cancel the hall. Earlier in the week it stays a gentle nudge.
+const LAST_CALL_DAYS = 2;
+function isLastCall(poll) {
+  const d = daysUntil(poll && poll.gameDate, todayWarsaw());
+  return d != null && d <= LAST_CALL_DAYS;
+}
+
 const processedCmds = new Set();
 function seen(id) {
   if (!id) return false;
@@ -277,13 +286,16 @@ const MVP_MAX_OPTIONS = 12;
 async function createMvpPoll(cfg) {
   const all = mvpCandidates();
   if (all.length < 2) { await sock.sendMessage(cfg.groupJid, { text: "Za mało graczy z ostatniego meczu na głosowanie MVP. 🏐" }); return; }
-  let candidates = all.slice(0, MVP_MAX_OPTIONS);
-  // More players than poll slots: they used to be dropped silently, which is unfair to whoever
-  // happened to sit past position 12. Still truncated (nothing else fits), but now it's visible.
-  const omitted = all.slice(MVP_MAX_OPTIONS);
-  if (omitted.length) {
-    console.log("[MVP] " + omitted.length + " player(s) did not fit the 12-option poll:", omitted.map(c => c.name).join(", "));
-    await notify(sock, cfg, "⚠️ MVP: zagrało " + all.length + " osób, a ankieta WhatsAppa mieści 12. Nie zmieścili się: " + omitted.map(c => c.name).join(", ") + ".");
+  // More players than poll slots. Keeping the first 12 of an arbitrarily ordered list punished
+  // whoever happened to sit past position 12, so pick the most regular players by season
+  // attendance instead. Someone is still left out — nothing else fits in a WhatsApp poll — but
+  // the choice is now deterministic and defensible, and the omission is reported to the owner.
+  let candidates = pickTopByAttendance(all, attendanceCounts(loadHistory()), MVP_MAX_OPTIONS);
+  if (all.length > candidates.length) {
+    const kept = new Set(candidates.map(c => c.phone));
+    const omitted = all.filter(c => !kept.has(c.phone));
+    console.log("[MVP] " + omitted.length + " player(s) did not fit the " + MVP_MAX_OPTIONS + "-option poll:", omitted.map(c => c.name).join(", "));
+    await notify(sock, cfg, "⚠️ MVP: zagrało " + all.length + " osób, a ankieta WhatsAppa mieści " + MVP_MAX_OPTIONS + ". Wybrałem osoby z najwyższą frekwencją; nie zmieścili się: " + omitted.map(c => c.name).join(", ") + ".");
   }
   const seenN = {};
   const finalOpts = candidates.map(c => { let n = c.name; if (seenN[n]) { seenN[n]++; n = n + " (" + seenN[n] + ")"; } else seenN[n] = 1; return n; });
@@ -663,7 +675,8 @@ async function offerMvpPoll(cfg, authorPhone) {
   if (cands.length < 2) return;                   // createMvpPoll would refuse anyway — don't ask
   state.pendingMvpOffer = { authorPhone: authorPhone || null, ts: Date.now() };
   saveState(state);
-  const names = cands.slice(0, MVP_MAX_OPTIONS).map(c => c.name).join(", ");
+  // Same selection rule as createMvpPoll, so the names offered are exactly the names voted on.
+  const names = pickTopByAttendance(cands, attendanceCounts(loadHistory()), MVP_MAX_OPTIONS).map(c => c.name).join(", ");
   await sock.sendMessage(cfg.groupJid, { text: "🏆 Zrobić głosowanie MVP za ten mecz?" + String.fromCharCode(10) + "Kandydaci: " + names + "." + String.fromCharCode(10) + "Napisz tak/nie." });
 }
 
@@ -1123,7 +1136,7 @@ async function handleGroupCommand(text, cfg, mentioned, senderPhone, isFromMe) {
   } else if (cmd.action === "remind") {
     let total = 0;
     const injured = activeInjuryLids(state.injuries, todayWarsaw());
-    for (const poll of activePolls()) { const r = await sendReminder(sock, poll, cfg, false, injured); if (r && r.count) total += r.count; }
+    for (const poll of activePolls()) { const r = await sendReminder(sock, poll, cfg, isLastCall(poll), injured); if (r && r.count) total += r.count; }
     if (!activePolls().length) await reply("Nie mogę teraz przypomnieć (brak aktywnej ankiety). 🏐");
     else if (total === 0) await reply("Wszyscy już zagłosowali! 🎉");
     else await notify(sock, cfg, "Komenda z grupy: przypomnij -> " + total);
@@ -1238,7 +1251,7 @@ async function handleOwnerCommand(text, cfg) {
   } else if (cmd.action === "remind") {
     let total = 0;
     const injured = activeInjuryLids(state.injuries, todayWarsaw());
-    for (const poll of activePolls()) { const r = await sendReminder(sock, poll, cfg, false, injured); if (r && r.count) total += r.count; }
+    for (const poll of activePolls()) { const r = await sendReminder(sock, poll, cfg, isLastCall(poll), injured); if (r && r.count) total += r.count; }
     await notify(sock, cfg, activePolls().length ? ("Przypomnienie wysłane do " + total + " osób.") : "Brak aktywnej ankiety.");
   } else if (cmd.action === "cancel") {
     const r = doCancel(text);
