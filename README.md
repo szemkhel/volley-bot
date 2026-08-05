@@ -23,7 +23,8 @@ Wszystkie komendy piszesz **na grupie**, zaczynając od słowa **`bot`**.
 ### Ankieta i głosowanie
 - `bot ankieta piątek 20:00` — tworzy nową ankietę na trening. Opcje: **Gram**, **Nie gram**, **Nie wiem**, **Gram i przyprowadzam +1**, **Gram i przyprowadzam +2**
 - `bot status` — liczba graczy na najbliższy trening
-- `bot przypomnij` — wysyła przypomnienie do osób, które jeszcze nie zagłosowały
+- `bot przypomnij` — wysyła przypomnienie do osób, które jeszcze nie zagłosowały. Gdy do gry
+  zostały maksymalnie 2 dni, działa jak ostatnie wołanie: dopytuje też osoby z głosem „Nie wiem"
 - `bot przypominajki` — (admin) lista nadchodzących, zaplanowanych przypomnień dla gier w tym tygodniu
 - `bot kontuzja <czas>` — zgłoś dłuższą przerwę (np. `bot kontuzja 2 tygodnie`, `bot kontuzja miesiąc`); bot pomija Cię w przypomnieniach do końca przerwy. Powrót: `bot kontuzja koniec`. Admin może zgłosić za kogoś: `bot kontuzja @osoba 3 tygodnie`
 
@@ -57,6 +58,9 @@ link pojawia się też pod odpowiedziami na `bot ranking` / `bot frekwencja` / `
 ### Głosowanie MVP
 - `bot mvp` — wystawia ankietę „MVP tygodnia” z graczami ostatniego meczu (admin). Zamyka się
   automatycznie po 24 h, a zwycięzca dostaje gratulacje i trafia do panelu ze statystykami
+- Ankieta WhatsAppa mieści **maksymalnie 12 opcji** — to ograniczenie platformy, nie bota. Gdy
+  zagrało więcej osób, bot wybiera 12 graczy z najwyższą frekwencją w sezonie i wysyła
+  organizatorowi prywatną wiadomość z listą tych, którzy się nie zmieścili
 - Bot sam zaproponuje to głosowanie po każdym rozliczeniu, więc zwykle nie musisz o nim pamiętać
 
 ### Inne
