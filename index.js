@@ -7,7 +7,8 @@ const path = require("path");
 const cron = require("node-cron");
 const http = require("http");
 const { notify } = require("./notify");
-const { DAY_WORDS, attendanceFromTally, weightOfOptions, parseAnkieta, nextDateForDay, isAdmin, settlementPeople, matchPoll, parseAbsenceDays, activeInjuryLids, reconnectDelay, healthReport, mergeGameRows, attendanceCounts, pickTopByAttendance, daysUntil } = require("./lib");
+const { DAY_WORDS, attendanceFromTally, weightOfOptions, parseAnkieta, nextDateForDay, isAdmin, settlementPeople, matchPoll, parseAbsenceDays, activeInjuryLids, reconnectDelay, healthReport, mergeGameRows, attendanceCounts, pickTopByAttendance, daysUntil,
+  pollBeatsHistory } = require("./lib");
 
 const DIR = __dirname;
 const STATE_FILE = path.join(DIR, "state.json");
@@ -255,27 +256,35 @@ async function recordMvpVote(pollUpdate, voterJid) {
   console.log("MVP vote:", phone, "->", option || "(none)");
 }
 
-// Who can be voted MVP: players who declared "yes" (weight > 0) for the most recent played game.
-// After a settlement that game is already archived, so history's `attendees` IS that list; the
-// open-poll branch covers a manual `bot mvp` fired before any settlement. Shared with
-// offerMvpPoll() so the names in the question can't drift from the names on the poll.
+// Who can be voted MVP: players who declared "yes" (weight > 0) for the most recent PLAYED game.
+// Normally that's history's last entry — a settlement archives the game before this runs. But
+// settlement can fail (2026-08-07: the AI classifier died on a zero-credit key) and leave a
+// played game un-archived; in that case the open poll for that already-happened game is the more
+// current source, and using stale history instead silently offers MVP for the WRONG week's
+// attendees. pollBeatsHistory() picks whichever is actually newer; a poll for an upcoming
+// (not-yet-played) game never qualifies. Shared with offerMvpPoll() so the names in the question
+// can't drift from the names on the poll.
 function mvpCandidates() {
   const contacts = loadContacts();
   const hist = loadHistory();
+  let bestHist = null;
   for (let i = hist.length - 1; i >= 0; i--) {
     const h = hist[i];
-    if (h.status !== "cancelled" && h.attendees && h.attendees.length) {
-      return h.attendees.map(a => ({ phone: a.phone, name: a.name || contacts[a.phone] || ("Gracz " + a.phone.slice(-4)) }));
-    }
+    if (h.status !== "cancelled" && h.attendees && h.attendees.length) { bestHist = h; break; }
   }
-  const pp = primaryPoll();
-  const out = [];
-  if (pp) {
-    for (const phone in pp.voters) {
-      if (weightOfOptions(pp.voters[phone].options) > 0) out.push({ phone: phone, name: contacts[phone] || ("Gracz " + phone.slice(-4)) });
+  const today = todayWarsaw();
+  const playedPoll = activePolls()
+    .filter(p => p.gameDate && p.gameDate <= today)
+    .sort((a, b) => (b.gameDate || "").localeCompare(a.gameDate || ""))[0] || null;
+  if (playedPoll && pollBeatsHistory(playedPoll.gameDate, today, bestHist && bestHist.date)) {
+    const out = [];
+    for (const phone in playedPoll.voters) {
+      if (weightOfOptions(playedPoll.voters[phone].options) > 0) out.push({ phone: phone, name: contacts[phone] || ("Gracz " + phone.slice(-4)) });
     }
+    return out;
   }
-  return out;
+  if (bestHist) return bestHist.attendees.map(a => ({ phone: a.phone, name: a.name || contacts[a.phone] || ("Gracz " + a.phone.slice(-4)) }));
+  return [];
 }
 
 // HARD WhatsApp limit: a poll accepts at most 12 options (100 chars each). This is NOT our
@@ -625,6 +634,15 @@ async function detectSettlement(text, authorPhone, cfg) {
   const hallCost = Number(cfg.hallCost) || 160;
   const { extractSettlement } = require("./reminder");
   const info = await extractSettlement(text, hallCost, cfg);
+  if (info && info.error) {
+    // The message passed the keyword gate (looks like a settlement) but we couldn't classify it —
+    // most likely the AI call itself failed (e.g. 2026-08-07: the bot's own API key ran out of
+    // credits). Staying silent here is how a real settlement went unnoticed for a whole evening;
+    // say something instead of pretending nothing happened.
+    console.error("[Settlement] extractSettlement failed:", info.error);
+    await notify(sock, cfg, "⚠️ Wygląda na rozliczenie, ale nie mogłem go odczytać (" + info.error + "). Sprawdź ręcznie: \"" + text.slice(0, 200) + "\"");
+    return;
+  }
   if (!info || !info.isSettlement) return;
   const people = settlementPeople(info, hallCost);
   if (!people || people < 2 || people > 50) return;
