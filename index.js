@@ -8,7 +8,7 @@ const cron = require("node-cron");
 const http = require("http");
 const { notify } = require("./notify");
 const { DAY_WORDS, attendanceFromTally, weightOfOptions, parseAnkieta, nextDateForDay, isAdmin, settlementPeople, matchPoll, parseAbsenceDays, activeInjuryLids, reconnectDelay, healthReport, mergeGameRows, attendanceCounts, pickTopByAttendance, daysUntil,
-  pollBeatsHistory, looksLikeFullSurname, suggestedInitialName } = require("./lib");
+  pollBeatsHistory, looksLikeFullSurname, suggestedInitialName, newAttendeesFromMentions } = require("./lib");
 
 const DIR = __dirname;
 const STATE_FILE = path.join(DIR, "state.json");
@@ -402,11 +402,13 @@ function finalizePolls() {
   if (changed) saveState(state);
 }
 
-// Settle a game and close it immediately (rozliczenie = game definitely happened, count known)
-function settleAndClose(people) {
+// Settle a game and close it immediately (rozliczenie = game definitely happened, count known).
+// extraAttendees = people @-mentioned to resolve a headcount drift (lib.newAttendeesFromMentions)
+// — not in the poll at all, so they need to be merged into the archived attendee list explicitly.
+function settleAndClose(people, extraAttendees) {
   const pp = primaryPoll();
-  if (pp) { pp.realPlayers = people; archivePoll(pp, "played"); removePoll(pp); saveState(state); return; }
-  setRealPlayers(people); // no active poll → history fallback
+  if (pp) { pp.realPlayers = people; archivePoll(pp, "played", extraAttendees); removePoll(pp); saveState(state); return; }
+  setRealPlayers(people); // no active poll → history fallback (extraAttendees not applicable)
 }
 
 const POLL_OPTIONS = ["Gram", "Nie gram", "Nie wiem", "Gram i przyprowadzam +1", "Gram i przyprowadzam +2"];
@@ -457,15 +459,23 @@ function statsLink(cfg) {
   return (cfg && cfg.statsUrl) ? (NL + NL + "📊 Więcej danych pod tym linkiem:" + NL + cfg.statsUrl) : "";
 }
 
-function archivePoll(poll, status) {
+function archivePoll(poll, status, extraAttendees) {
   if (!poll) return;
   const { voted, tally } = tallyOf(poll);
   status = status || "played";
-  if (status !== "cancelled" && voted === 0) return;
+  if (status !== "cancelled" && voted === 0 && !(extraAttendees && extraAttendees.length)) return;
   const contacts = loadContacts();
   const attendees = [];
+  const seenPhones = new Set();
   for (const phone in poll.voters) {
-    if (weightOfOptions(poll.voters[phone].options) > 0) attendees.push({ phone: phone, name: contacts[phone] || null });
+    if (weightOfOptions(poll.voters[phone].options) > 0) { attendees.push({ phone: phone, name: contacts[phone] || null }); seenPhones.add(phone); }
+  }
+  // Extra attendees named via @mention to resolve a headcount drift — merged in, not counted twice
+  // if someone got both a real vote AND a redundant tag.
+  for (const e of (extraAttendees || [])) {
+    if (!e || !e.phone || seenPhones.has(e.phone)) continue;
+    attendees.push({ phone: e.phone, name: contacts[e.phone] || null });
+    seenPhones.add(e.phone);
   }
   const hist = loadHistory();
   hist.push({
@@ -481,7 +491,7 @@ function archivePoll(poll, status) {
   });
   if (hist.length > 200) hist.shift();
   saveHistory(hist);
-  console.log("Archived poll:", status, poll.gameDay, "players=" + attendanceFromTally(tally));
+  console.log("Archived poll:", status, poll.gameDay, "players=" + attendanceFromTally(tally) + (extraAttendees && extraAttendees.length ? " (+" + extraAttendees.length + " dopisanych)" : ""));
   if (!testMode) syncStatsDb();
 }
 
@@ -558,7 +568,10 @@ async function createPoll(cfg, day, time, targetJid) {
 // Someone who voted and then LEFT still owes for the game, so they stay in `accounted` and keep
 // their line — but they're named in plain text instead of @-tagged, because a mention of a
 // non-member renders as a dead tag for everyone in the chat.
-function buildSettlement(cost, realPeople, cfg, poll, memberPhones) {
+// extraAttendees = people @-mentioned to resolve a headcount drift (lib.newAttendeesFromMentions)
+// — not in the poll, so unlike a real voter there's no way to know if they'd have brought a
+// +1/+2 guest; they're split at the base weight of 1.
+function buildSettlement(cost, realPeople, cfg, poll, memberPhones, extraAttendees) {
   const NL = String.fromCharCode(10);
   const perUnit = cost / realPeople;
   const contacts = loadContacts();
@@ -575,6 +588,14 @@ function buildSettlement(cost, realPeople, cfg, poll, memberPhones) {
     if (!isMember) dropped++;
     const amount = Math.round(perUnit * w);
     (groups[amount] = groups[amount] || []).push({ jid: v.jid, phone: phone, isMember: isMember });
+  }
+  for (const e of (extraAttendees || [])) {
+    if (!e || !e.phone) continue;
+    accounted += 1;
+    const isMember = !memberPhones || memberPhones.has(e.phone);
+    if (!isMember) dropped++;
+    const amount = Math.round(perUnit * 1);
+    (groups[amount] = groups[amount] || []).push({ jid: e.jid || (e.phone + "@lid"), phone: e.phone, isMember: isMember });
   }
   const lines = ["Rozliczenie sali:"];
   const mentions = [];
@@ -657,18 +678,39 @@ async function detectSettlement(text, authorPhone, cfg) {
   }
   state.pendingPlayerUpdate = { detected: people, current: current, authorPhone: authorPhone, ts: Date.now() };
   saveState(state);
-  await sock.sendMessage(cfg.groupJid, { text: "📊 Z rozliczenia wychodzi " + people + " graczy" + (current != null ? " (u mnie zapisane: " + current + ")" : "") + ". Zaktualizować liczbę graczy na " + people + "? Napisz tak/nie." });
+  await sock.sendMessage(cfg.groupJid, { text: "📊 Z rozliczenia wychodzi " + people + " graczy" + (current != null ? " (u mnie zapisane: " + current + ")" : "") + ". Zaktualizować liczbę graczy na " + people + "? Napisz tak/nie, albo oznacz osoby, które mam dodać do dzisiejszych statystyk (np. @Patryk @Kuba)." });
 }
 
-async function handlePlayerUpdateAnswer(text, senderPhone, isFromMe, cfg) {
+// mentionedJids: tagging is an ALTERNATIVE to tak/nie (per the drift question above), so it's
+// checked first and wins over any tak/nie text riding along in the same message.
+async function handlePlayerUpdateAnswer(text, senderPhone, isFromMe, cfg, mentionedJids) {
   const p = state.pendingPlayerUpdate;
   if (!p) return false;
   if (Date.now() - (p.ts || 0) > 30 * 60 * 1000) { state.pendingPlayerUpdate = null; saveState(state); return false; }
+  const allowed = (senderPhone && senderPhone === p.authorPhone) || isAdmin(senderPhone, isFromMe, cfg.admins || [], (cfg.notifyLid || "").split("@")[0]);
+  if (mentionedJids && mentionedJids.length) {
+    if (!allowed) return false;
+    const extra = newAttendeesFromMentions(mentionedJids, primaryPoll());
+    state.pendingPlayerUpdate = null; saveState(state);
+    if (!extra.length) {
+      // Everyone tagged already voted "Gram" — nothing new, same outcome as a plain "tak".
+      settleAndClose(p.detected);
+      await sock.sendMessage(cfg.groupJid, { text: "✅ Zaktualizowano liczbę graczy na " + p.detected + " i zamknąłem rozliczenie. 🏐" });
+      await notify(sock, cfg, "Liczba graczy zaktualizowana z rozliczenia na " + p.detected + ".");
+      await offerMvpPoll(cfg, p.authorPhone);
+      return true;
+    }
+    const finalPeople = attendanceOf(primaryPoll()) + extra.length;
+    settleAndClose(finalPeople, extra);
+    await sock.sendMessage(cfg.groupJid, { text: "✅ Dopisałem " + extra.length + " os. i zamknąłem rozliczenie na " + finalPeople + " graczy. 🏐", mentions: extra.map(e => e.jid) });
+    await notify(sock, cfg, "Liczba graczy zaktualizowana z rozliczenia na " + finalPeople + " (+" + extra.length + " dopisanych).");
+    await offerMvpPoll(cfg, p.authorPhone);
+    return true;
+  }
   const low = (text || "").trim().toLowerCase();
   const yes = /^(tak|t|ok|aktualizuj|zaktualizuj|potwierdzam)\b/.test(low);
   const no = /^(nie|n|zostaw|anuluj)\b/.test(low);
   if (!yes && !no) return false;
-  const allowed = (senderPhone && senderPhone === p.authorPhone) || isAdmin(senderPhone, isFromMe, cfg.admins || [], (cfg.notifyLid || "").split("@")[0]);
   if (!allowed) return false;
   if (yes) {
     settleAndClose(p.detected);
@@ -751,13 +793,13 @@ async function currentMemberPhones(cfg) {
   }
 }
 
-async function doSettlement(cfg, cost, people) {
-  const st = buildSettlement(cost, people, cfg, primaryPoll(), await currentMemberPhones(cfg));
+async function doSettlement(cfg, cost, people, extraAttendees) {
+  const st = buildSettlement(cost, people, cfg, primaryPoll(), await currentMemberPhones(cfg), extraAttendees);
   await sock.sendMessage(cfg.groupJid, { text: st.text, mentions: st.mentions });
-  settleAndClose(people);
+  settleAndClose(people, extraAttendees);
   state.pendingRozliczenie = null;
   saveState(state);
-  await notify(sock, cfg, "Rozliczenie wysłane: " + cost + "pln / " + people + " osób.");
+  await notify(sock, cfg, "Rozliczenie wysłane: " + cost + "pln / " + people + " osób." + (extraAttendees && extraAttendees.length ? " (+" + extraAttendees.length + " dopisanych)" : ""));
   await offerMvpPoll(cfg, null);
   return true;
 }
@@ -772,11 +814,13 @@ async function finalizeRozliczenie(cfg) {
   p.stage = "confirm";
   p.ts = Date.now();
   saveState(state);
-  await sock.sendMessage(cfg.groupJid, { text: "💰 Liczby się nie zgadzają — ankieta: " + pollPeople + ", podałeś: " + p.people + ". Rozliczyć na " + p.people + " osób (priorytet realnej liczby)? Napisz tak/nie." });
+  await sock.sendMessage(cfg.groupJid, { text: "💰 Liczby się nie zgadzają — ankieta: " + pollPeople + ", podałeś: " + p.people + ". Rozliczyć na " + p.people + " osób? Napisz tak/nie, albo oznacz osoby, które mam dodać do dzisiejszych statystyk (np. @Patryk @Kuba)." });
   return true;
 }
 
-async function handleRozliczenieAnswer(rtext, cfg) {
+// mentionedJids only matters at the "confirm" stage — tagging is an ALTERNATIVE to tak/nie there,
+// so it wins over any tak/nie text in the same message and skips the regex checks entirely.
+async function handleRozliczenieAnswer(rtext, cfg, mentionedJids) {
   const p = state.pendingRozliczenie;
   if (!p) return false;
   if (Date.now() - (p.ts || 0) > 15 * 60 * 1000) { state.pendingRozliczenie = null; saveState(state); return false; }
@@ -795,6 +839,13 @@ async function handleRozliczenieAnswer(rtext, cfg) {
     return await finalizeRozliczenie(cfg);
   }
   if (p.stage === "confirm") {
+    if (mentionedJids && mentionedJids.length) {
+      const extra = newAttendeesFromMentions(mentionedJids, primaryPoll());
+      // Everyone tagged already voted "Gram" — nothing new to add, fall back to the plain count.
+      if (!extra.length) return await doSettlement(cfg, p.cost, p.people);
+      const finalPeople = attendanceOf(primaryPoll()) + extra.length;
+      return await doSettlement(cfg, p.cost, finalPeople, extra);
+    }
     if (/^(tak|t|ok|yes|potwierdzam)\b/i.test(rtext)) return await doSettlement(cfg, p.cost, p.people);
     if (/^(nie|n|no|anuluj)\b/i.test(rtext)) { state.pendingRozliczenie = null; saveState(state); await sock.sendMessage(cfg.groupJid, { text: "Anulowano rozliczenie." }); return true; }
     return false;
@@ -1461,6 +1512,9 @@ async function connectToWhatsApp() {
 
     for (const msg of messages) {
       if (!msg.message) continue;
+      // Shared across the answer-capture blocks below: @-mentions let an admin resolve a
+      // headcount drift by naming who to add, as an alternative to a plain tak/nie.
+      const mentionedJid = msg.message.extendedTextMessage?.contextInfo?.mentionedJid || [];
 
       if ((cfg.notifyJid && msg.key.remoteJid === cfg.notifyJid) || (cfg.notifyLid && msg.key.remoteJid === cfg.notifyLid)) {
         const ctext = msg.message.conversation || msg.message.extendedTextMessage?.text;
@@ -1484,7 +1538,7 @@ async function connectToWhatsApp() {
       if (state.pendingRozliczenie && cfg.groupJid && msg.key.remoteJid === cfg.groupJid) {
         const rtext = (msg.message.conversation || msg.message.extendedTextMessage?.text || "").trim();
         if (rtext && !rtext.startsWith("💰") && !rtext.startsWith("🤖") && !/^bot\b/i.test(rtext)) {
-          const done = await handleRozliczenieAnswer(rtext, cfg);
+          const done = await handleRozliczenieAnswer(rtext, cfg, mentionedJid);
           if (done) continue;
         }
       }
@@ -1516,7 +1570,7 @@ async function connectToWhatsApp() {
         if (stext && stext.indexOf(BOT_TAG) !== 0 && !stext.startsWith("🤖") && !stext.startsWith("💰") && !/^bot\b/i.test(stext.trim()) && !seen("money:" + msg.key.id)) {
           const aPhone = (msg.key.participant || msg.key.remoteJid || "").split("@")[0];
           let consumed = false;
-          if (state.pendingPlayerUpdate) consumed = await handlePlayerUpdateAnswer(stext, aPhone, !!msg.key.fromMe, cfg);
+          if (state.pendingPlayerUpdate) consumed = await handlePlayerUpdateAnswer(stext, aPhone, !!msg.key.fromMe, cfg, mentionedJid);
           // MVP offer comes AFTER the player-count question, so a "tak" can never be stolen from it.
           // In practice they never overlap: the offer is only created once that one is resolved.
           if (!consumed && state.pendingMvpOffer) consumed = await handleMvpOfferAnswer(stext, aPhone, !!msg.key.fromMe, cfg);

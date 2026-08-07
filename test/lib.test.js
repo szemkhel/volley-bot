@@ -1,7 +1,26 @@
 const test = require("node:test");
 const assert = require("node:assert");
 const { attendanceFromTally, weightOfOptions, parseAnkieta, nextDateForDay, isAdmin, settlementPeople, matchPoll, parseAbsenceDays, activeInjuryLids, reconnectDelay, healthReport, mergeGameRows, hasBannedVenueWord, votersChoosing, attendanceCounts, pickTopByAttendance, daysUntil,
-  parseSettlementShorthand, pollBeatsHistory, looksLikeFullSurname, suggestedInitialName } = require("../lib");
+  parseSettlementShorthand, pollBeatsHistory, looksLikeFullSurname, suggestedInitialName, newAttendeesFromMentions } = require("../lib");
+
+test("newAttendeesFromMentions: only genuinely new people, deduped", () => {
+  const poll = { voters: {
+    "111": { jid: "111@lid", options: ["Gram"] },
+    "222": { jid: "222@lid", options: ["Nie gram"] },
+  } };
+  const out = newAttendeesFromMentions(["333@lid", "111@lid", "333@lid"], poll);
+  assert.deepStrictEqual(out.map(o => o.phone), ["333"]);   // 111 already voted Gram, 333 repeated
+});
+
+test("newAttendeesFromMentions: a 'Nie gram' voter still counts as new if tagged", () => {
+  const poll = { voters: { "222": { jid: "222@lid", options: ["Nie gram"] } } };
+  assert.deepStrictEqual(newAttendeesFromMentions(["222@lid"], poll).map(o => o.phone), ["222"]);
+});
+
+test("newAttendeesFromMentions: empty/missing inputs", () => {
+  assert.deepStrictEqual(newAttendeesFromMentions([], { voters: {} }), []);
+  assert.deepStrictEqual(newAttendeesFromMentions(null, null), []);
+});
 
 test("looksLikeFullSurname: bare or short initials pass, full surnames flagged", () => {
   assert.strictEqual(looksLikeFullSurname("Franek S"), false);
