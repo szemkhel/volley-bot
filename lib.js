@@ -139,6 +139,26 @@ function daysUntil(dateStr, today) {
   return Math.round((b - a) / 86400000);
 }
 
+// People @-mentioned in reply to a headcount-drift question who AREN'T already counted as a
+// "Gram" voter in the poll — i.e. players to add to today's attendee list and cost split. Skips
+// anyone already accounted for (re-tagging a real voter is a no-op, not a duplicate credit) and
+// dedupes repeated mentions.
+function newAttendeesFromMentions(mentionedJids, poll) {
+  const already = new Set();
+  for (const phone in ((poll && poll.voters) || {})) {
+    if (weightOfOptions(poll.voters[phone].options) > 0) already.add(phone);
+  }
+  const out = [];
+  const seen = new Set();
+  for (const jid of (mentionedJids || [])) {
+    const phone = (jid || "").split("@")[0];
+    if (!phone || already.has(phone) || seen.has(phone)) continue;
+    seen.add(phone);
+    out.push({ phone: phone, jid: jid });
+  }
+  return out;
+}
+
 // "bot imie" convention: first name + at most a short surname marker (a bare initial or a
 // two-letter abbreviation, optional trailing dot) — never a full surname, since these names feed
 // the public stats dashboard. Anything longer needs confirmation before it's written.
@@ -258,4 +278,4 @@ function healthReport(now, s, thresholdSec) {
 }
 
 module.exports = { DAY_WORDS, attendanceFromTally, weightOfOptions, parseAnkieta, nextDateForDay, isAdmin, settlementPeople, matchPoll, parseAbsenceDays, activeInjuryLids, reconnectDelay, healthReport, mergeGameRows, hasBannedVenueWord, votersChoosing, attendanceCounts, pickTopByAttendance, daysUntil,
-parseSettlementShorthand, pollBeatsHistory, looksLikeFullSurname, suggestedInitialName };
+parseSettlementShorthand, pollBeatsHistory, looksLikeFullSurname, suggestedInitialName, newAttendeesFromMentions };

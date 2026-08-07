@@ -1,5 +1,12 @@
 [
   {
+    "version": "v1.31",
+    "date": "8 sierpnia 2026",
+    "notes": [
+      "Gdy liczba osób z rozliczenia nie zgadza się z ankietą, bot pyta teraz nie tylko „tak/nie” — można też oznaczyć konkretne osoby do dopisania (np. „@Patryk @Kuba”). Oznaczeni trafiają do podziału kosztu sali i do kandydatów na MVP, tak jakby zagłosowali w ankiecie."
+    ]
+  },
+  {
     "version": "v1.30",
     "date": "8 sierpnia 2026",
     "notes": [

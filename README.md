@@ -54,6 +54,10 @@ link pojawia się też pod odpowiedziami na `bot ranking` / `bot frekwencja` / `
   („po 14,55 zł, BLIK…”), bot sam ją rozpozna i zapisze realną liczbę graczy. Właśnie do tego
   służy zapisany koszt sali — gdy w wiadomości jest tylko kwota na osobę, bez sumy, bot liczy
   graczy jako *koszt sali ÷ kwota na osobę*, więc nieaktualna wartość da cichy błąd we frekwencji
+- Gdy liczba osób z rozliczenia nie zgadza się z ankietą (np. ankieta: 7, rozliczenie: 200/8), bot
+  zapyta, czy zaktualizować liczbę — możesz odpowiedzieć `tak`/`nie`, albo **oznaczyć konkretne
+  osoby**, które mam dopisać do dzisiejszych statystyk (np. `@Patryk @Kuba`). Oznaczeni trafiają
+  do podziału kosztu i do kandydatów na MVP, tak jakby zagłosowali w ankiecie
 - Po zamknięciu rozliczenia bot proponuje głosowanie MVP i pokazuje listę kandydatów (osoby, które
   zadeklarowały grę). Odpowiedz `tak`, żeby je wystawić, albo `nie`. Efekt jest identyczny jak przy
   `bot mvp` — to ta sama ankieta
