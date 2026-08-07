@@ -42,6 +42,8 @@ Both must be green before pushing. CI (`.github/workflows/ci.yml`, job `test`) r
 - `db.js` — best-effort Postgres mirror; no-op when `DATABASE_URL` is unset.
 - `chart.js` — frekwencja PNG bar chart via `@napi-rs/canvas`.
 - `notify.js` — owner self-chat DM.
+- `avatars.js` — monthly cache of member profile pictures (`avatars/`, gitignored) for the MVP
+  caricature feature. Cron 1st @ 04:00; hidden owner self-chat trigger `avatary` to run on demand.
 - `find-group.js`, `create-test-group.js`, `trigger.js` — one-shot helpers.
 - `releases.json` — user-facing changelog in Polish, newest first; feeds `bot zmiany`. Currently **v1.22**.
 
