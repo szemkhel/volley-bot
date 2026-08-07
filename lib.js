@@ -139,6 +139,32 @@ function daysUntil(dateStr, today) {
   return Math.round((b - a) / 86400000);
 }
 
+// Cheap, deterministic pre-parse for the "total/people" settlement shape this group actually
+// uses ("po 25,00zł (200/8)...", "160/11"). Tried BEFORE the AI classifier in extractSettlement,
+// so the common case survives an AI outage entirely (2026-08-07: a real settlement message went
+// completely unrecognized because the classifier call failed on a zero-credit API key) and costs
+// nothing on the happy path either. Returns null on no match, leaving the AI call as fallback for
+// looser phrasing that doesn't spell out total/people directly.
+function parseSettlementShorthand(text) {
+  const m = (text || "").match(/(\d+(?:[.,]\d+)?)\s*\/\s*(\d+)\b/);
+  if (!m) return null;
+  const total = parseFloat(m[1].replace(",", "."));
+  const people = parseInt(m[2], 10);
+  if (!(total > 0) || !(people > 0)) return null;
+  return { isSettlement: true, people: people, total: total, perPerson: Math.round((total / people) * 100) / 100 };
+}
+
+// Is an active-but-unsettled poll a MORE CURRENT source of "who played" than the latest archived
+// history entry? True only when the poll's game already happened (gameDate <= today — a future
+// poll is never a source) and post-dates whatever's in history. Exists because settlement can
+// fail (AI outage, network) and leave a played game un-archived; without this check, MVP
+// candidates silently fall back to a stale prior week instead of the game just played.
+function pollBeatsHistory(pollGameDate, today, histDate) {
+  if (!pollGameDate || !today || pollGameDate > today) return false;
+  if (!histDate) return true;
+  return pollGameDate > histDate;
+}
+
 // "Kort" is a TENNIS court — we rent a hala / sala / boisko. It leaked into reminders from our own
 // prompt text. Detect rather than substitute: Polish case endings make a blind kort→sala swap
 // ungrammatical ("zarezerwować kort" → "zarezerwować sala"), so callers regenerate instead.
@@ -213,4 +239,5 @@ function healthReport(now, s, thresholdSec) {
   };
 }
 
-module.exports = { DAY_WORDS, attendanceFromTally, weightOfOptions, parseAnkieta, nextDateForDay, isAdmin, settlementPeople, matchPoll, parseAbsenceDays, activeInjuryLids, reconnectDelay, healthReport, mergeGameRows, hasBannedVenueWord, votersChoosing, attendanceCounts, pickTopByAttendance, daysUntil };
+module.exports = { DAY_WORDS, attendanceFromTally, weightOfOptions, parseAnkieta, nextDateForDay, isAdmin, settlementPeople, matchPoll, parseAbsenceDays, activeInjuryLids, reconnectDelay, healthReport, mergeGameRows, hasBannedVenueWord, votersChoosing, attendanceCounts, pickTopByAttendance, daysUntil,
+parseSettlementShorthand, pollBeatsHistory };

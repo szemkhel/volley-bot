@@ -1,6 +1,33 @@
 const test = require("node:test");
 const assert = require("node:assert");
-const { attendanceFromTally, weightOfOptions, parseAnkieta, nextDateForDay, isAdmin, settlementPeople, matchPoll, parseAbsenceDays, activeInjuryLids, reconnectDelay, healthReport, mergeGameRows, hasBannedVenueWord, votersChoosing, attendanceCounts, pickTopByAttendance, daysUntil } = require("../lib");
+const { attendanceFromTally, weightOfOptions, parseAnkieta, nextDateForDay, isAdmin, settlementPeople, matchPoll, parseAbsenceDays, activeInjuryLids, reconnectDelay, healthReport, mergeGameRows, hasBannedVenueWord, votersChoosing, attendanceCounts, pickTopByAttendance, daysUntil,
+  parseSettlementShorthand, pollBeatsHistory } = require("../lib");
+
+test("parseSettlementShorthand: extracts total/people, computes perPerson", () => {
+  assert.deepStrictEqual(parseSettlementShorthand("po 25,00zł (200/8)"), { isSettlement: true, people: 8, total: 200, perPerson: 25 });
+  assert.deepStrictEqual(parseSettlementShorthand("160/11 na BLIK"), { isSettlement: true, people: 11, total: 160, perPerson: 14.55 });
+});
+
+test("parseSettlementShorthand: no match → null", () => {
+  assert.strictEqual(parseSettlementShorthand("dzięki za grę, do zobaczenia!"), null);
+  assert.strictEqual(parseSettlementShorthand(""), null);
+  assert.strictEqual(parseSettlementShorthand(null), null);
+  assert.strictEqual(parseSettlementShorthand("0/8"), null);   // zero total is not a real split
+});
+
+test("pollBeatsHistory: a played, unsettled poll outranks stale history", () => {
+  assert.strictEqual(pollBeatsHistory("2026-08-07", "2026-08-07", "2026-07-31"), true);
+  assert.strictEqual(pollBeatsHistory("2026-08-07", "2026-08-07", null), true);
+});
+
+test("pollBeatsHistory: a future (not-yet-played) poll never qualifies", () => {
+  assert.strictEqual(pollBeatsHistory("2026-08-14", "2026-08-07", "2026-07-31"), false);
+});
+
+test("pollBeatsHistory: history already covers this game or is newer", () => {
+  assert.strictEqual(pollBeatsHistory("2026-07-31", "2026-08-07", "2026-07-31"), false);
+  assert.strictEqual(pollBeatsHistory("2026-07-24", "2026-08-07", "2026-07-31"), false);
+});
 
 test("attendanceCounts: counts played games only", () => {
   const hist = [

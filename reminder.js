@@ -1,7 +1,7 @@
 const Anthropic = require("@anthropic-ai/sdk");
 const fs = require("fs");
 const path = require("path");
-const { hasBannedVenueWord, votersChoosing } = require("./lib");
+const { hasBannedVenueWord, votersChoosing, parseSettlementShorthand } = require("./lib");
 
 // The poll option that means "still undecided" — must match POLL_OPTIONS in index.js.
 const UNDECIDED_OPTION = "Nie wiem";
@@ -333,6 +333,8 @@ async function proposeFeatures(messages, suggestions, config) {
 
 // Extract real player count from a manual cost-split message (e.g. "po 14,55zł (160/11)... BLIK")
 async function extractSettlement(text, hallCost, config) {
+  const shorthand = parseSettlementShorthand(text);
+  if (shorthand) return shorthand;
   try {
     const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY || config.anthropicApiKey });
     const resp = await client.messages.create({
@@ -358,7 +360,9 @@ async function extractSettlement(text, hallCost, config) {
     };
   } catch (err) {
     console.error("extractSettlement error:", err.message);
-    return null;
+    // Distinguish "the model looked and said no" (null) from "we never got an answer" (error) —
+    // detectSettlement needs this to tell the owner rather than stay silent on a real API outage.
+    return { error: err.message };
   }
 }
 

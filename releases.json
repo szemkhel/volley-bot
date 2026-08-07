@@ -1,5 +1,14 @@
 [
   {
+    "version": "v1.29",
+    "date": "7 sierpnia 2026",
+    "notes": [
+      "Naprawka: rozliczenie w prostym formacie „po 25,00zł (200/8)” bot teraz rozpozna od razu, bez pytania AI o zdanie — dzięki temu działa nawet wtedy, gdy chwilowo nie ma dostępu do modelu.",
+      "Jeśli mimo wszystko nie uda się rozpoznać rozliczenia, bot da znać organizatorowi zamiast milczeć.",
+      "Naprawka: głosowanie MVP wystawione ręcznie tuż po grze, przed rozliczeniem, brało czasem graczy ze starszego, już rozliczonego meczu zamiast z bieżącego."
+    ]
+  },
+  {
     "version": "v1.28",
     "date": "5 sierpnia 2026",
     "notes": [
