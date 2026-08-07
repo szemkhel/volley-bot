@@ -1,7 +1,24 @@
 const test = require("node:test");
 const assert = require("node:assert");
 const { attendanceFromTally, weightOfOptions, parseAnkieta, nextDateForDay, isAdmin, settlementPeople, matchPoll, parseAbsenceDays, activeInjuryLids, reconnectDelay, healthReport, mergeGameRows, hasBannedVenueWord, votersChoosing, attendanceCounts, pickTopByAttendance, daysUntil,
-  parseSettlementShorthand, pollBeatsHistory } = require("../lib");
+  parseSettlementShorthand, pollBeatsHistory, looksLikeFullSurname, suggestedInitialName } = require("../lib");
+
+test("looksLikeFullSurname: bare or short initials pass, full surnames flagged", () => {
+  assert.strictEqual(looksLikeFullSurname("Franek S"), false);
+  assert.strictEqual(looksLikeFullSurname("Krzysztof S."), false);
+  assert.strictEqual(looksLikeFullSurname("Paweł Ku"), false);      // two letters is OK
+  assert.strictEqual(looksLikeFullSurname("Krzysztof"), false);      // first name only
+  assert.strictEqual(looksLikeFullSurname("Krzysztof Suski"), true);
+  assert.strictEqual(looksLikeFullSurname("Zuzanna Rydzewska"), true);
+  assert.strictEqual(looksLikeFullSurname(""), false);
+  assert.strictEqual(looksLikeFullSurname(null), false);
+});
+
+test("suggestedInitialName: first name + initial of the next word", () => {
+  assert.strictEqual(suggestedInitialName("Krzysztof Suski"), "Krzysztof S.");
+  assert.strictEqual(suggestedInitialName("Zuzanna Rydzewska"), "Zuzanna R.");
+  assert.strictEqual(suggestedInitialName("Krzysztof"), "Krzysztof");   // nothing to shorten
+});
 
 test("parseSettlementShorthand: extracts total/people, computes perPerson", () => {
   assert.deepStrictEqual(parseSettlementShorthand("po 25,00zł (200/8)"), { isSettlement: true, people: 8, total: 200, perPerson: 25 });

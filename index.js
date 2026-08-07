@@ -8,7 +8,7 @@ const cron = require("node-cron");
 const http = require("http");
 const { notify } = require("./notify");
 const { DAY_WORDS, attendanceFromTally, weightOfOptions, parseAnkieta, nextDateForDay, isAdmin, settlementPeople, matchPoll, parseAbsenceDays, activeInjuryLids, reconnectDelay, healthReport, mergeGameRows, attendanceCounts, pickTopByAttendance, daysUntil,
-  pollBeatsHistory } = require("./lib");
+  pollBeatsHistory, looksLikeFullSurname, suggestedInitialName } = require("./lib");
 
 const DIR = __dirname;
 const STATE_FILE = path.join(DIR, "state.json");
@@ -698,6 +698,29 @@ async function offerMvpPoll(cfg, authorPhone) {
   await sock.sendMessage(cfg.groupJid, { text: "🏆 Zrobić głosowanie MVP za ten mecz?" + String.fromCharCode(10) + "Kandydaci: " + names + "." + String.fromCharCode(10) + "Napisz tak/nie." });
 }
 
+async function handleImieConfirmAnswer(text, senderPhone, isFromMe, cfg) {
+  const p = state.pendingImieConfirm;
+  if (!p) return false;
+  if (Date.now() - (p.ts || 0) > 10 * 60 * 1000) { state.pendingImieConfirm = null; saveState(state); return false; }
+  const low = (text || "").trim().toLowerCase();
+  const yes = /^(tak|t|ok|potwierdzam)\b/.test(low);
+  const no = /^(nie|n|anuluj)\b/.test(low);
+  if (!yes && !no) return false;
+  // Same rule as the other confirmations: whoever asked for the change, or any admin.
+  const okToAnswer = (senderPhone && senderPhone === p.authorPhone) || isAdmin(senderPhone, isFromMe, cfg.admins || [], (cfg.notifyLid || "").split("@")[0]);
+  if (!okToAnswer) return false;
+  state.pendingImieConfirm = null; saveState(state);
+  if (yes) {
+    contacts[p.phone] = p.name;
+    saveContacts(contacts);
+    if (!testMode) syncStatsDb();
+    await sock.sendMessage(cfg.groupJid, { text: "Zapisałem imię: " + p.name + " ✅ Zaktualizuje się w statystykach i na panelu." });
+  } else {
+    await sock.sendMessage(cfg.groupJid, { text: "Ok, nie zapisuję. Podaj krótszą wersję, np. z samym inicjałem nazwiska." });
+  }
+  return true;
+}
+
 async function handleMvpOfferAnswer(text, senderPhone, isFromMe, cfg) {
   const p = state.pendingMvpOffer;
   if (!p) return false;
@@ -955,7 +978,7 @@ async function handleGroupCommand(text, cfg, mentioned, senderPhone, isFromMe) {
   }
   const low = text.trim().toLowerCase();
   if (low.startsWith("pomoc") || low.startsWith("help")) {
-    await reply("Komendy 🏐\nDla wszystkich:\n• bot status — liczba graczy\n• bot frekwencja — frekwencja i trend\n• bot ranking — obecność graczy\n• bot statystyki @osoba — statystyki gracza\n• bot kontuzja <czas> — zgłoś dłuższą przerwę (pomijam Cię w przypomnieniach)\n• bot motywacja — motywacja od bota\n• bot kalendarz — jak dodać kalendarz treningów\n• bot zmiany [ile] — co nowego w bocie\n• bot sugestia <treść> — zaproponuj komendę/funkcję\nTylko admini 🛡️:\n• bot ankieta piątek 20:00 — nowa ankieta\n• bot zmień dzień/godzinę — zmiana terminu\n• bot mvp — głosowanie MVP\n• bot rozlicz — podziel koszt sali\n• bot koszt sali 160 — ustaw koszt wynajmu\n• bot przypomnij — przypomnij teraz\n• bot przypominajki — lista nadchodzących przypomnień\n• bot nie gramy / cofnij odwołanie");
+    await reply("Komendy 🏐\nDla wszystkich:\n• bot status — liczba graczy\n• bot frekwencja — frekwencja i trend\n• bot ranking — obecność graczy\n• bot statystyki @osoba — statystyki gracza\n• bot kontuzja <czas> — zgłoś dłuższą przerwę (pomijam Cię w przypomnieniach)\n• bot motywacja — motywacja od bota\n• bot kalendarz — jak dodać kalendarz treningów\n• bot zmiany [ile] — co nowego w bocie\n• bot sugestia <treść> — zaproponuj komendę/funkcję\nTylko admini 🛡️:\n• bot ankieta piątek 20:00 — nowa ankieta\n• bot zmień dzień/godzinę — zmiana terminu\n• bot mvp — głosowanie MVP\n• bot rozlicz — podziel koszt sali\n• bot koszt sali 160 — ustaw koszt wynajmu\n• bot przypomnij — przypomnij teraz\n• bot przypominajki — lista nadchodzących przypomnień\n• bot nie gramy / cofnij odwołanie\n• bot imie @osoba Imię S. — popraw czyjeś imię w statystykach (bez pełnego nazwiska)");
     return;
   }
   if (low.startsWith("sugestia") || low.startsWith("sugestie") || low.startsWith("propozycja") || low.startsWith("pomysł") || low.startsWith("pomysl")) {
@@ -1123,15 +1146,23 @@ async function handleGroupCommand(text, cfg, mentioned, senderPhone, isFromMe) {
     await reply("🩹 Zapisałem przerwę dla " + who + " do " + until + " (~" + days + " dni). Pomijam w przypomnieniach do tego czasu. Wróć wcześniej: \"bot kontuzja koniec\".");
     return;
   }
-  // HIDDEN, OWNER-ONLY (isFromMe, not cfg.admins): manually set a player's name. Deliberately absent
-  // from `pomoc`/README/changelog. Mention resolves to the person's LID (matches attendance keys),
-  // unlike address-book contacts which key by phone number and don't propagate in this LID group.
-  if (isFromMe && (low.startsWith("imię") || low.startsWith("imie") || low.startsWith("nazwa"))) {
+  // Any admin can set a player's display name (mention resolves to the LID, matching attendance
+  // keys — unlike address-book contacts, which key by phone number and don't propagate in this
+  // LID group). Guarded against writing a FULL surname: these names feed the public stats
+  // dashboard, so the convention is first name + at most a short initial. Anything longer asks
+  // for confirmation instead of silently writing it.
+  if (allowed && (low.startsWith("imię") || low.startsWith("imie") || low.startsWith("nazwa"))) {
     const target = (mentioned || [])[0];
-    if (!target) { await reply("Oznacz osobę i podaj imię, np. \"bot imie @osoba Krzysztof Suski\". 🏐"); return; }
+    if (!target) { await reply("Oznacz osobę i podaj imię, np. \"bot imie @osoba Krzysztof S.\". 🏐"); return; }
     const phone = target.split("@")[0];
     const name = text.replace(/^\s*(imię|imie|nazwa)\b/i, "").replace(/@\d+/g, "").trim();
-    if (!name) { await reply("Podaj imię po oznaczeniu, np. \"bot imie @osoba Krzysztof Suski\"."); return; }
+    if (!name) { await reply("Podaj imię po oznaczeniu, np. \"bot imie @osoba Krzysztof S.\"."); return; }
+    if (looksLikeFullSurname(name)) {
+      state.pendingImieConfirm = { phone: phone, name: name, authorPhone: senderPhone, ts: Date.now() };
+      saveState(state);
+      await reply("\"" + name + "\" wygląda na pełne nazwisko — zwykle zapisujemy tylko inicjał, np. \"" + suggestedInitialName(name) + "\". Zapisać mimo to pełne nazwisko? Napisz tak/nie.");
+      return;
+    }
     contacts[phone] = name;
     saveContacts(contacts);
     if (!testMode) syncStatsDb();
@@ -1489,6 +1520,7 @@ async function connectToWhatsApp() {
           // MVP offer comes AFTER the player-count question, so a "tak" can never be stolen from it.
           // In practice they never overlap: the offer is only created once that one is resolved.
           if (!consumed && state.pendingMvpOffer) consumed = await handleMvpOfferAnswer(stext, aPhone, !!msg.key.fromMe, cfg);
+          if (!consumed && state.pendingImieConfirm) consumed = await handleImieConfirmAnswer(stext, aPhone, !!msg.key.fromMe, cfg);
           if (consumed) continue;
           await detectSettlement(stext, aPhone, cfg);
         }

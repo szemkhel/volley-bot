@@ -1,5 +1,13 @@
 [
   {
+    "version": "v1.30",
+    "date": "8 sierpnia 2026",
+    "notes": [
+      "Komenda „bot imie @osoba Imię” jest teraz dostępna dla wszystkich adminów, nie tylko dla organizatora.",
+      "Bot pilnuje, żeby przez tę komendę nie wpisywać pełnych nazwisk — jeśli wykryje coś dłuższego niż krótki inicjał, dopyta „tak/nie”, zanim zapisze."
+    ]
+  },
+  {
     "version": "v1.29",
     "date": "7 sierpnia 2026",
     "notes": [

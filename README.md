@@ -36,6 +36,9 @@ Wszystkie komendy piszesz **na grupie**, zaczynając od słowa **`bot`**.
 - `bot cofnij odwołanie` — przywraca odwołany trening
 
 ### Statystyki
+- `bot imie @osoba Imię S.` — poprawia czyjeś imię w statystykach i na panelu (admin). Konwencja:
+  imię + co najwyżej krótki inicjał nazwiska (np. „S." albo „Sz"), nigdy pełne nazwisko — jeśli
+  bot wykryje pełne nazwisko, dopyta „tak/nie", zanim je zapisze
 - `bot frekwencja` — ostatnie 10 ankiet (data, liczba graczy, grane/odwołane)
 - `bot ranking` — ranking obecności graczy (kto gra najczęściej)
 
