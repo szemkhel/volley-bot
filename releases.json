@@ -1,5 +1,12 @@
 [
   {
+    "version": "v1.32",
+    "date": "8 sierpnia 2026",
+    "notes": [
+      "Techniczne przygotowanie pod przyszłą niespodziankę dla MVP — bot zaczyna raz w miesiącu zapisywać sobie zdjęcia profilowe uczestników grupy. Na razie nic w komendach się nie zmienia."
+    ]
+  },
+  {
     "version": "v1.31",
     "date": "8 sierpnia 2026",
     "notes": [

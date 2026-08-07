@@ -1276,6 +1276,18 @@ async function handleOwnerCommand(text, cfg) {
     await notify(sock, cfg, "Komendy:\n• ankieta piątek 20:00 — nowa ankieta\n• status — liczba graczy\n• zmień dzień na czwartek / godzinę 21:00\n• frekwencja — frekwencja i trend\n• rozlicz — podziel koszt sali\n• ranking — obecność graczy\n• przypomnij — przypomnij teraz\n• przypominajki — lista nadchodzących przypomnień\n• gramy w czwartek — ustaw dzień\n• pomoc — ta lista\n• nie gramy — odwołaj\n• cofnij odwołanie — przywróć trening\n• test on / test off — grupa testowa");
     return;
   }
+  // HIDDEN, OWNER-ONLY: manual trigger for the monthly avatar cache (normally runs 1st @ 04:00).
+  // Not in pomoc/README — this is plumbing for the MVP caricature feature, not a user command.
+  if (low === "avatary" || low === "odśwież avatary" || low === "odswiez avatary") {
+    if (!cfg.groupJid) { await notify(sock, cfg, "Brak groupJid."); return; }
+    try {
+      const r = await require("./avatars").refreshAvatars(sock, cfg.groupJid);
+      await notify(sock, cfg, "📸 Avatary odświeżone: " + r.ok + "/" + r.total + " pobranych, " + r.skipped + " bez zdjęcia/prywatność.");
+    } catch (e) {
+      await notify(sock, cfg, "Błąd odświeżania avatarów: " + e.message);
+    }
+    return;
+  }
   if (low.startsWith("cofnij")) {
     const r = doUndo();
     if (r.ok) scheduleReminders(getSock, state, saveState, cfg);
@@ -1870,6 +1882,16 @@ backupData();
 // Mirror production history → Postgres for the public Grafana dashboard (startup + 15-min backstop).
 syncStatsDb();
 cron.schedule("*/15 * * * *", syncStatsDb, { timezone: TZ });
+
+// Monthly 04:00 on the 1st — refresh cached member avatars (feeds MVP caricatures). Skipped in
+// test mode so a test-group run never overwrites the real cache with test-group participants.
+cron.schedule("0 4 1 * *", () => {
+  const cfg = loadConfig();
+  if (testMode || !cfg.groupJid || !sock) return;
+  require("./avatars").refreshAvatars(sock, cfg.groupJid)
+    .then(r => console.log("[Avatars] refreshed:", JSON.stringify(r)))
+    .catch(e => console.error("[Avatars] refresh error:", e.message));
+}, { timezone: TZ });
 
 // Calendar ICS feed (subscribable) — regenerate hourly + serve over HTTP
 writeCalendar(loadConfig());
