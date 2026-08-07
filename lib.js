@@ -277,5 +277,40 @@ function healthReport(now, s, thresholdSec) {
   };
 }
 
+// Folds a fresh avatar face-check into the per-person meta record. A pinned "good" (single-face)
+// photo is never dropped just because this month's avatar has no face or multiple faces (group
+// photo, couple photo) — people don't always keep a solo headshot as their avatar.
+function nextAvatarMeta(prev, fresh) {
+  const p = prev || {};
+  const out = {
+    latestFile: (fresh && fresh.file) || null,
+    latestFetchedAt: fresh && fresh.fetchedAt,
+    faceCount: fresh && fresh.faceCount != null ? fresh.faceCount : null,
+    goodFaceFile: p.goodFaceFile || null,
+    goodFaceUpdatedAt: p.goodFaceUpdatedAt || null,
+    guessedGender: p.guessedGender || (fresh && fresh.guessedGender) || null,
+  };
+  if (fresh && fresh.faceCount === 1 && fresh.file) {
+    out.goodFaceFile = fresh.file;
+    out.goodFaceUpdatedAt = fresh.fetchedAt;
+  }
+  return out;
+}
+
+// All options tied for the top vote count — a real tie gets a caricature each, not just one winner.
+function topTiedEntries(tally) {
+  const entries = Object.keys(tally || {}).map(o => ({ o: o, c: tally[o] }));
+  if (!entries.length) return [];
+  const max = Math.max(...entries.map(e => e.c));
+  return entries.filter(e => e.c === max);
+}
+
+// How many times this phone has already won MVP (including any entries already pushed this call).
+function mvpWinCount(mvpList, phone) {
+  if (!phone) return 0;
+  return (mvpList || []).filter(m => m.phone === phone).length;
+}
+
 module.exports = { DAY_WORDS, attendanceFromTally, weightOfOptions, parseAnkieta, nextDateForDay, isAdmin, settlementPeople, matchPoll, parseAbsenceDays, activeInjuryLids, reconnectDelay, healthReport, mergeGameRows, hasBannedVenueWord, votersChoosing, attendanceCounts, pickTopByAttendance, daysUntil,
-parseSettlementShorthand, pollBeatsHistory, looksLikeFullSurname, suggestedInitialName, newAttendeesFromMentions };
+parseSettlementShorthand, pollBeatsHistory, looksLikeFullSurname, suggestedInitialName, newAttendeesFromMentions,
+nextAvatarMeta, topTiedEntries, mvpWinCount };

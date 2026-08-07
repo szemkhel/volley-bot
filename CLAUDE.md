@@ -44,6 +44,16 @@ Both must be green before pushing. CI (`.github/workflows/ci.yml`, job `test`) r
 - `notify.js` — owner self-chat DM.
 - `avatars.js` — monthly cache of member profile pictures (`avatars/`, gitignored) for the MVP
   caricature feature. Cron 1st @ 04:00; hidden owner self-chat trigger `avatary` to run on demand.
+  Each refresh also AI face-checks the photo (`reminder.js` `analyzeFaceForCaricature`) and pins the
+  last known single-face photo per person (`lib.js` `nextAvatarMeta`) — a later avatar with no face
+  or multiple faces never overwrites a previously good one.
+- `mvpCaricature.js` — **hidden feature, not in `pomoc`/README/`releases.json`.** On MVP poll close,
+  generates a cartoonish caricature (OpenAI `gpt-image-1`, `/v1/images/edits` from the winner's
+  pinned avatar when available, else `/v1/images/generations` with a best-guess gender) in a random
+  volleyball action pose, with a Polish haiku (`reminder.js` `generateMvpHaiku`) baked into the
+  image. On a genuine vote tie, every tied winner gets their own caricature. Wired into
+  `index.js`'s `closeMvpPoll` via `sendMvpCaricature`, which never blocks the text announcement —
+  failures are caught and reported to the owner via `notify()`.
 - `find-group.js`, `create-test-group.js`, `trigger.js` — one-shot helpers.
 - `releases.json` — user-facing changelog in Polish, newest first; feeds `bot zmiany`. Currently **v1.22**.
 
@@ -57,7 +67,7 @@ container**. They survive deploys; tracked files do not (see below).
    minutes and does `git reset --hard origin/main` — live edits are wiped. All code changes go
    through branch → PR → squash-merge.
 2. **No real secrets in the repo — and none on GitHub at all.** Secrets live in the container
-   `.env` (`ANTHROPIC_API_KEY`, `PHONE`, `NOTIFY_JID`, `NOTIFY_LID`, `BLIK_NUMBER`,
+   `.env` (`ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `PHONE`, `NOTIFY_JID`, `NOTIFY_LID`, `BLIK_NUMBER`,
    `DATABASE_URL`, `LOG_LEVEL`), backed up **locally only** to `C:\Users\patry\.claude\volley.env`.
    `config.example.json` / `.env.example` carry placeholders only. The old private
    `szemkhel/volley-secrets` repo was deleted on 2026-08-01 — credentials must never leave the

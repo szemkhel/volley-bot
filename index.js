@@ -8,7 +8,8 @@ const cron = require("node-cron");
 const http = require("http");
 const { notify } = require("./notify");
 const { DAY_WORDS, attendanceFromTally, weightOfOptions, parseAnkieta, nextDateForDay, isAdmin, settlementPeople, matchPoll, parseAbsenceDays, activeInjuryLids, reconnectDelay, healthReport, mergeGameRows, attendanceCounts, pickTopByAttendance, daysUntil,
-  pollBeatsHistory, looksLikeFullSurname, suggestedInitialName, newAttendeesFromMentions } = require("./lib");
+  pollBeatsHistory, looksLikeFullSurname, suggestedInitialName, newAttendeesFromMentions,
+  topTiedEntries, mvpWinCount } = require("./lib");
 
 const DIR = __dirname;
 const STATE_FILE = path.join(DIR, "state.json");
@@ -328,32 +329,58 @@ async function createMvpPoll(cfg) {
   console.log("MVP poll created with", finalOpts.length, "candidates");
 }
 
+// Best-effort caricature+haiku surprise for one MVP winner. An OpenAI outage, missing key, or
+// network hiccup must never block the MVP announcement text (already sent by the caller) or the
+// loop over other tied winners — every failure is caught here and reported to the owner instead.
+async function sendMvpCaricature(cfg, winner, winnerPhone) {
+  const apiKey = process.env.OPENAI_API_KEY || cfg.openaiApiKey;
+  if (!apiKey) { console.log("[MVP Caricature] no OPENAI_API_KEY configured — skipping"); return; }
+  try {
+    const { loadMeta, AVATARS_DIR } = require("./avatars");
+    const { generateCaricature } = require("./mvpCaricature");
+    const { generateMvpHaiku } = require("./reminder");
+    const meta = winnerPhone ? loadMeta()[winnerPhone] : null;
+    const referenceFile = meta && meta.goodFaceFile ? path.join(AVATARS_DIR, meta.goodFaceFile) : null;
+    const guessedGender = meta && meta.guessedGender;
+    const haiku = await generateMvpHaiku(winner.name, cfg);
+    const img = await generateCaricature(apiKey, referenceFile, guessedGender, haiku);
+    await sock.sendMessage(cfg.groupJid, { image: img, caption: "🏆🎨" });
+  } catch (e) {
+    console.error("[MVP Caricature] failed for", winner.name, ":", e.message);
+    await notify(sock, cfg, "⚠️ Nie udało się wygenerować karykatury MVP dla " + winner.name + ": " + e.message);
+  }
+}
+
 async function closeMvpPoll(cfg) {
   if (!state.mvpPoll) return;
   const { generateMvpCongrats } = require("./reminder");
   const tally = {};
   for (const phone in state.mvpPoll.votes) { const o = state.mvpPoll.votes[phone]; tally[o] = (tally[o] || 0) + 1; }
-  const entries = Object.keys(tally).map(o => ({ o: o, c: tally[o] })).sort((a, b) => b.c - a.c);
-  if (!entries.length) {
+  const winners = topTiedEntries(tally);
+  if (!winners.length) {
     await sock.sendMessage(cfg.groupJid, { text: "Nikt nie zagłosował na MVP w tym tygodniu. 🏐" });
     state.mvpPoll = null; saveState(state); return;
   }
-  const top = entries[0];
-  const winner = (state.mvpPoll.optToPlayer && state.mvpPoll.optToPlayer[top.o]) || { name: top.o, phone: null };
-  const mvp = loadMvp();
-  mvp.push({ date: new Date().toISOString().slice(0, 10), phone: winner.phone, name: winner.name, votes: top.c });
-  saveMvp(mvp);
-  const congrats = await generateMvpCongrats(winner.name, top.c, cfg);
-  // An MVP who left the group can't be tagged — fall back to the plain name rather than a dead @tag.
-  const winnerPhone = winner.phone ? winner.phone.split("@")[0] : null;
   const members = await currentMemberPhones(cfg);
-  const canTag = !!winnerPhone && (!members || members.has(winnerPhone));
-  if (winnerPhone && !canTag) console.log("[MVP] winner", winner.name, "no longer in the group — no @mention");
-  const mentions = canTag ? [winnerPhone + "@lid"] : [];
-  const tag = canTag ? ("@" + winnerPhone) : winner.name;
-  await sock.sendMessage(cfg.groupJid, { text: "🏆 MVP tygodnia: " + tag + " (" + top.c + " głosów)!\n" + congrats, mentions });
+  const mvp = loadMvp();
+  for (const w of winners) {
+    const winner = (state.mvpPoll.optToPlayer && state.mvpPoll.optToPlayer[w.o]) || { name: w.o, phone: null };
+    mvp.push({ date: new Date().toISOString().slice(0, 10), phone: winner.phone, name: winner.name, votes: w.c });
+    saveMvp(mvp);
+    const congrats = await generateMvpCongrats(winner.name, w.c, cfg);
+    // An MVP who left the group can't be tagged — fall back to the plain name rather than a dead @tag.
+    const winnerPhone = winner.phone ? winner.phone.split("@")[0] : null;
+    const canTag = !!winnerPhone && (!members || members.has(winnerPhone));
+    if (winnerPhone && !canTag) console.log("[MVP] winner", winner.name, "no longer in the group — no @mention");
+    const mentions = canTag ? [winnerPhone + "@lid"] : [];
+    const tag = canTag ? ("@" + winnerPhone) : winner.name;
+    const nth = mvpWinCount(mvp, winner.phone);
+    const nthNote = nth > 1 ? ("\nTo już " + nth + ". raz MVP dla " + winner.name + "! 🏆") : "";
+    await sock.sendMessage(cfg.groupJid, { text: "🏆 MVP tygodnia: " + tag + " (" + w.c + " głosów)!\n" + congrats + nthNote, mentions });
+    console.log("MVP closed, winner:", winner.name, w.c);
+    await sendMvpCaricature(cfg, winner, winnerPhone);
+  }
   state.mvpPoll = null; saveState(state);
-  console.log("MVP closed, winner:", winner.name, top.c);
 }
 
 async function statystykiText(mentionedJid, cfg) {
@@ -1281,7 +1308,7 @@ async function handleOwnerCommand(text, cfg) {
   if (low === "avatary" || low === "odśwież avatary" || low === "odswiez avatary") {
     if (!cfg.groupJid) { await notify(sock, cfg, "Brak groupJid."); return; }
     try {
-      const r = await require("./avatars").refreshAvatars(sock, cfg.groupJid);
+      const r = await require("./avatars").refreshAvatars(sock, cfg.groupJid, cfg);
       await notify(sock, cfg, "📸 Avatary odświeżone: " + r.ok + "/" + r.total + " pobranych, " + r.skipped + " bez zdjęcia/prywatność.");
     } catch (e) {
       await notify(sock, cfg, "Błąd odświeżania avatarów: " + e.message);
@@ -1888,7 +1915,7 @@ cron.schedule("*/15 * * * *", syncStatsDb, { timezone: TZ });
 cron.schedule("0 4 1 * *", () => {
   const cfg = loadConfig();
   if (testMode || !cfg.groupJid || !sock) return;
-  require("./avatars").refreshAvatars(sock, cfg.groupJid)
+  require("./avatars").refreshAvatars(sock, cfg.groupJid, cfg)
     .then(r => console.log("[Avatars] refreshed:", JSON.stringify(r)))
     .catch(e => console.error("[Avatars] refresh error:", e.message));
 }, { timezone: TZ });

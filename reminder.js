@@ -304,6 +304,59 @@ async function generateMvpCongrats(name, votes, config) {
   }
 }
 
+// Polish haiku baked directly into the MVP caricature image (not the WhatsApp caption) — a single
+// short text block renders reliably with gpt-image-1; cramming more text in the same image was
+// tested and produced misspellings, so nothing else goes in the picture.
+async function generateMvpHaiku(name, config) {
+  const fallback = "Piłka w powietrzu\nSerce bije jak w rytm gry\nZwycięstwo bliskie";
+  try {
+    const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY || config.anthropicApiKey });
+    const resp = await client.messages.create({
+      model: CREATIVE_MODEL,
+      max_tokens: 100,
+      messages: [{
+        role: "user",
+        content: `Napisz krótkie polskie haiku (dokładnie 3 linijki, klimat siatkarski/sportowy, tryumfalny, o zwycięstwie MVP tygodnia) dla gracza "${name}". NIE wspominaj imienia w treści haiku. KONIECZNIE poprawna, naturalna polszczyzna bez błędów językowych. Zwróć TYLKO trzy linijki, każda w osobnej linii, bez numeracji, bez cudzysłowów, bez dodatkowych komentarzy, bez markdown.`
+      }]
+    });
+    const lines = stripMarkdown(resp.content[0].text).split("\n").map(l => l.trim()).filter(Boolean).slice(0, 3);
+    return lines.length === 3 ? lines.join("\n") : fallback;
+  } catch (err) {
+    console.error("generateMvpHaiku error:", err.message);
+    return fallback;
+  }
+}
+
+// Counts usable faces in an avatar photo for the caricature pipeline — 0 (no face / not a person),
+// 1 (usable), 2+ (group/couple photo, treated the same as 0 so avatars.js keeps the last pinned
+// good face instead). Also best-guesses gender for the no-good-face-ever fallback caricature.
+async function analyzeFaceForCaricature(imageBuffer, mediaType, config) {
+  try {
+    const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY || config.anthropicApiKey });
+    const resp = await client.messages.create({
+      model: CLASSIFY_MODEL,
+      max_tokens: 60,
+      messages: [{
+        role: "user",
+        content: [
+          { type: "image", source: { type: "base64", media_type: mediaType, data: imageBuffer.toString("base64") } },
+          { type: "text", text: `Ile wyraźnych ludzkich twarzy widać na tym zdjęciu, na tyle wyraźnie by można było na ich podstawie narysować karykaturę? Odpowiedz TYLKO w JSON, bez markdown: {"faceCount": liczba, "guessedGender": "male" albo "female" albo null}. guessedGender to Twój najlepszy strzał co do płci głównej/jedynej widocznej osoby (null jeśli faceCount to 0 i nic nie sugeruje płci).` }
+        ]
+      }]
+    });
+    const m = resp.content[0].text.trim().match(/\{[\s\S]*\}/);
+    if (!m) return { faceCount: null, guessedGender: null };
+    const j = JSON.parse(m[0]);
+    return {
+      faceCount: typeof j.faceCount === "number" ? j.faceCount : null,
+      guessedGender: (j.guessedGender === "male" || j.guessedGender === "female") ? j.guessedGender : null,
+    };
+  } catch (err) {
+    console.error("analyzeFaceForCaricature error:", err.message);
+    return { faceCount: null, guessedGender: null };
+  }
+}
+
 // Hidden weekly job: analyze the week's group chat + user suggestions → propose NEW bot commands/features (test group only)
 async function proposeFeatures(messages, suggestions, config) {
   try {
@@ -366,4 +419,4 @@ async function extractSettlement(text, hallCost, config) {
   }
 }
 
-module.exports = { sendReminder, generateReminder, detectGameDay, analyzeGameResponse, interpretCommand, generateMotivation, generateMvpCongrats, proposeFeatures, extractSettlement, DAY_NAMES_PL_ACC, DAY_NAMES_PL };
+module.exports = { sendReminder, generateReminder, detectGameDay, analyzeGameResponse, interpretCommand, generateMotivation, generateMvpCongrats, generateMvpHaiku, analyzeFaceForCaricature, proposeFeatures, extractSettlement, DAY_NAMES_PL_ACC, DAY_NAMES_PL };
