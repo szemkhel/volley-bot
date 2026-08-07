@@ -139,6 +139,24 @@ function daysUntil(dateStr, today) {
   return Math.round((b - a) / 86400000);
 }
 
+// "bot imie" convention: first name + at most a short surname marker (a bare initial or a
+// two-letter abbreviation, optional trailing dot) — never a full surname, since these names feed
+// the public stats dashboard. Anything longer needs confirmation before it's written.
+function looksLikeFullSurname(name) {
+  const words = (name || "").trim().split(/\s+/).filter(Boolean);
+  if (words.length < 2) return false;
+  const surname = words.slice(1).join("").replace(/\.$/, "");
+  return surname.length > 2;
+}
+
+// What to suggest instead when looksLikeFullSurname() flags a name — first name + initial of the
+// next word, e.g. "Krzysztof Suski" -> "Krzysztof S."
+function suggestedInitialName(name) {
+  const words = (name || "").trim().split(/\s+/).filter(Boolean);
+  if (words.length < 2) return name;
+  return words[0] + " " + words[1].charAt(0).toUpperCase() + ".";
+}
+
 // Cheap, deterministic pre-parse for the "total/people" settlement shape this group actually
 // uses ("po 25,00zł (200/8)...", "160/11"). Tried BEFORE the AI classifier in extractSettlement,
 // so the common case survives an AI outage entirely (2026-08-07: a real settlement message went
@@ -240,4 +258,4 @@ function healthReport(now, s, thresholdSec) {
 }
 
 module.exports = { DAY_WORDS, attendanceFromTally, weightOfOptions, parseAnkieta, nextDateForDay, isAdmin, settlementPeople, matchPoll, parseAbsenceDays, activeInjuryLids, reconnectDelay, healthReport, mergeGameRows, hasBannedVenueWord, votersChoosing, attendanceCounts, pickTopByAttendance, daysUntil,
-parseSettlementShorthand, pollBeatsHistory };
+parseSettlementShorthand, pollBeatsHistory, looksLikeFullSurname, suggestedInitialName };
