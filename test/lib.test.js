@@ -1,7 +1,8 @@
 const test = require("node:test");
 const assert = require("node:assert");
 const { attendanceFromTally, weightOfOptions, parseAnkieta, nextDateForDay, isAdmin, settlementPeople, matchPoll, parseAbsenceDays, activeInjuryLids, reconnectDelay, healthReport, mergeGameRows, hasBannedVenueWord, votersChoosing, attendanceCounts, pickTopByAttendance, daysUntil,
-  parseSettlementShorthand, pollBeatsHistory, looksLikeFullSurname, suggestedInitialName, newAttendeesFromMentions } = require("../lib");
+  parseSettlementShorthand, pollBeatsHistory, looksLikeFullSurname, suggestedInitialName, newAttendeesFromMentions,
+  nextAvatarMeta, topTiedEntries, mvpWinCount } = require("../lib");
 
 test("newAttendeesFromMentions: only genuinely new people, deduped", () => {
   const poll = { voters: {
@@ -338,4 +339,58 @@ test("matchPoll: by day + time", () => {
 test("matchPoll: no match → null", () => {
   assert.strictEqual(matchPoll([{ gameDay: "friday" }], "monday"), null);
   assert.strictEqual(matchPoll([], "friday"), null);
+});
+
+test("nextAvatarMeta: single face pins goodFaceFile", () => {
+  const out = nextAvatarMeta(null, { file: "111.jpg", fetchedAt: "2026-08-01T00:00:00Z", faceCount: 1, guessedGender: "male" });
+  assert.strictEqual(out.goodFaceFile, "111.jpg");
+  assert.strictEqual(out.goodFaceUpdatedAt, "2026-08-01T00:00:00Z");
+  assert.strictEqual(out.guessedGender, "male");
+});
+
+test("nextAvatarMeta: no face keeps previously pinned good face", () => {
+  const prev = { goodFaceFile: "111.jpg", goodFaceUpdatedAt: "2026-07-01T00:00:00Z", guessedGender: "male" };
+  const out = nextAvatarMeta(prev, { file: "111.jpg", fetchedAt: "2026-08-01T00:00:00Z", faceCount: 0, guessedGender: null });
+  assert.strictEqual(out.goodFaceFile, "111.jpg");
+  assert.strictEqual(out.goodFaceUpdatedAt, "2026-07-01T00:00:00Z");
+  assert.strictEqual(out.faceCount, 0);
+});
+
+test("nextAvatarMeta: multiple faces (group photo) also keeps pinned good face", () => {
+  const prev = { goodFaceFile: "111.jpg", goodFaceUpdatedAt: "2026-07-01T00:00:00Z" };
+  const out = nextAvatarMeta(prev, { file: "111-new.jpg", fetchedAt: "2026-08-01T00:00:00Z", faceCount: 2, guessedGender: null });
+  assert.strictEqual(out.goodFaceFile, "111.jpg");
+  assert.strictEqual(out.faceCount, 2);
+});
+
+test("nextAvatarMeta: fetch failure (faceCount null) doesn't clear pinned good face", () => {
+  const prev = { goodFaceFile: "111.jpg", goodFaceUpdatedAt: "2026-07-01T00:00:00Z" };
+  const out = nextAvatarMeta(prev, { file: null, fetchedAt: "2026-08-01T00:00:00Z", faceCount: null, guessedGender: null });
+  assert.strictEqual(out.goodFaceFile, "111.jpg");
+  assert.strictEqual(out.latestFile, null);
+});
+
+test("topTiedEntries: single winner", () => {
+  const out = topTiedEntries({ "Ala": 3, "Bob": 1 });
+  assert.deepStrictEqual(out, [{ o: "Ala", c: 3 }]);
+});
+
+test("topTiedEntries: genuine tie returns all top scorers", () => {
+  const out = topTiedEntries({ "Ala": 2, "Bob": 2, "Cel": 1 });
+  assert.deepStrictEqual(out.map(e => e.o).sort(), ["Ala", "Bob"]);
+});
+
+test("topTiedEntries: empty tally → []", () => {
+  assert.deepStrictEqual(topTiedEntries({}), []);
+  assert.deepStrictEqual(topTiedEntries(null), []);
+});
+
+test("mvpWinCount: counts matching phone entries", () => {
+  const mvp = [{ phone: "111@lid" }, { phone: "222@lid" }, { phone: "111@lid" }];
+  assert.strictEqual(mvpWinCount(mvp, "111@lid"), 2);
+  assert.strictEqual(mvpWinCount(mvp, "333@lid"), 0);
+});
+
+test("mvpWinCount: null phone → 0", () => {
+  assert.strictEqual(mvpWinCount([{ phone: "111@lid" }], null), 0);
 });
