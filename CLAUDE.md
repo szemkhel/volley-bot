@@ -39,7 +39,13 @@ Both must be green before pushing. CI (`.github/workflows/ci.yml`, job `test`) r
   "claude-haiku-4-5-20251001"` for classification (day detection, response analysis, command intent).
 - `scheduler.js` — per-game cron reminder pairs.
 - `lib.js` — pure helpers, **this is what the tests cover**. Put testable logic here.
-- `db.js` — best-effort Postgres mirror; no-op when `DATABASE_URL` is unset.
+- `db.js` — best-effort Postgres mirror; no-op when `DATABASE_URL` is unset. Also holds the
+  `ai_text_pool` table helpers (`drawPooledText`/`refillPool`) used by `textPool.js`.
+- `textPool.js` — pre-generates generic (non-personalized) AI text in batches of 20 and stores
+  unused rows in Postgres `ai_text_pool` (kind: `motywacja`, `mvp_haiku`), so most requests draw an
+  already-written row instead of a fresh Claude call. Falls back to one live call whenever the DB
+  is unavailable or the batch generator fails — see `reminder.js`
+  `generateMotivationBatch`/`generateMvpHaikuBatch`.
 - `chart.js` — frekwencja PNG bar chart via `@napi-rs/canvas`.
 - `notify.js` — owner self-chat DM.
 - `avatars.js` — monthly cache of member profile pictures (`avatars/`, gitignored) for the MVP

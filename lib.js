@@ -311,6 +311,31 @@ function mvpWinCount(mvpList, phone) {
   return (mvpList || []).filter(m => m.phone === phone).length;
 }
 
+// Cheap local gate before spending an AI classification call on the owner's self-chat catch-all
+// ("Message Yourself" is also a personal scratchpad, so most messages there are NOT bot commands).
+// Broad on purpose — a false positive just costs one wasted classify call, a false negative silently
+// drops a real command, which is the worse failure. Mirrors interpretCommand's own action vocabulary.
+const OWNER_COMMAND_WORDS = /\b(stan|status|głos|glos|harmonogram|dzień|dzien|ustaw|gram|gramy|graj|przełóż|przelóż|zmień|zmien|przypomn|wyślij|wyslij|ping|poganiaj|anuluj|odwołaj|odwolaj|wyłącz|wylacz|stop|pomoc|help|komend|potrafisz|umiesz|mecz|siatk|ankiet|trening)\b/i;
+function looksLikeOwnerCommand(text) {
+  const t = text || "";
+  if (OWNER_COMMAND_WORDS.test(t)) return true;
+  const lower = t.toLowerCase();
+  for (const w in DAY_WORDS) { if (lower.includes(w)) return true; }
+  return false;
+}
+
+// Same idea for the group-chat "are we playing this week?" classifier — while state.askedAboutGame
+// is true, EVERY group message used to trigger a full AI call; most are unrelated banter. Gate on
+// day names or an explicit yes/no/playing word before spending the call.
+const GAME_RESPONSE_WORDS = /\b(tak|nie|gram|gramy|graja|grają|trening|mecz|siatk|impreza|jedziemy|odpuśćmy|odpuscmy|odwołujemy|odwolujemy)\b/i;
+function looksLikeGameResponse(text) {
+  const t = text || "";
+  if (GAME_RESPONSE_WORDS.test(t)) return true;
+  const lower = t.toLowerCase();
+  for (const w in DAY_WORDS) { if (lower.includes(w)) return true; }
+  return false;
+}
+
 module.exports = { DAY_WORDS, attendanceFromTally, weightOfOptions, parseAnkieta, nextDateForDay, isAdmin, settlementPeople, matchPoll, parseAbsenceDays, activeInjuryLids, reconnectDelay, healthReport, mergeGameRows, hasBannedVenueWord, votersChoosing, attendanceCounts, pickTopByAttendance, daysUntil,
 parseSettlementShorthand, pollBeatsHistory, looksLikeFullSurname, suggestedInitialName, newAttendeesFromMentions,
-nextAvatarMeta, topTiedEntries, mvpWinCount };
+nextAvatarMeta, topTiedEntries, mvpWinCount, looksLikeOwnerCommand, looksLikeGameResponse };

@@ -9,7 +9,7 @@ const http = require("http");
 const { notify } = require("./notify");
 const { DAY_WORDS, attendanceFromTally, weightOfOptions, parseAnkieta, nextDateForDay, isAdmin, settlementPeople, matchPoll, parseAbsenceDays, activeInjuryLids, reconnectDelay, healthReport, mergeGameRows, attendanceCounts, pickTopByAttendance, daysUntil,
   pollBeatsHistory, looksLikeFullSurname, suggestedInitialName, newAttendeesFromMentions,
-  topTiedEntries, mvpWinCount } = require("./lib");
+  topTiedEntries, mvpWinCount, looksLikeOwnerCommand, looksLikeGameResponse } = require("./lib");
 
 const DIR = __dirname;
 const STATE_FILE = path.join(DIR, "state.json");
@@ -338,11 +338,12 @@ async function sendMvpCaricature(cfg, winner, winnerPhone) {
   try {
     const { loadMeta, AVATARS_DIR } = require("./avatars");
     const { generateCaricature } = require("./mvpCaricature");
-    const { generateMvpHaiku } = require("./reminder");
+    const { generateMvpHaiku, generateMvpHaikuBatch } = require("./reminder");
+    const { getPooledText } = require("./textPool");
     const meta = winnerPhone ? loadMeta()[winnerPhone] : null;
     const referenceFile = meta && meta.goodFaceFile ? path.join(AVATARS_DIR, meta.goodFaceFile) : null;
     const guessedGender = meta && meta.guessedGender;
-    const haiku = await generateMvpHaiku(winner.name, cfg);
+    const haiku = await getPooledText("mvp_haiku", cfg, generateMvpHaikuBatch, () => generateMvpHaiku(winner.name, cfg));
     const img = await generateCaricature(apiKey, referenceFile, guessedGender, haiku);
     await sock.sendMessage(cfg.groupJid, { image: img, caption: "🏆🎨" });
   } catch (e) {
@@ -1137,8 +1138,9 @@ async function handleGroupCommand(text, cfg, mentioned, senderPhone, isFromMe) {
     return;
   }
   if (low.startsWith("motywacja") || low.startsWith("motywuj")) {
-    const { generateMotivation } = require("./reminder");
-    await reply(await generateMotivation(cfg));
+    const { generateMotivation, generateMotivationBatch } = require("./reminder");
+    const { getPooledText } = require("./textPool");
+    await reply(await getPooledText("motywacja", cfg, generateMotivationBatch, () => generateMotivation(cfg)));
     return;
   }
   if (low.startsWith("zmiany") || low.startsWith("changelog") || low.startsWith("wersja")) {
@@ -1382,6 +1384,9 @@ async function handleOwnerCommand(text, cfg) {
     else await notify(sock, cfg, frekwencjaText());
     return;
   }
+  // Self-chat doubles as a personal scratchpad — don't spend an AI call classifying notes that
+  // obviously aren't bot commands (this used to fire on every single message typed there).
+  if (!looksLikeOwnerCommand(text)) { console.log("[Owner command] skipped (no command keywords):", JSON.stringify(text)); return; }
   const cmd = await interpretCommand(text, state, cfg);
   console.log("[Owner command]", JSON.stringify(text), "->", JSON.stringify(cmd));
 
@@ -1656,7 +1661,7 @@ async function connectToWhatsApp() {
               await sock.sendMessage(cfg.groupJid, { text: `Domyślny dzień gry ustawiony na ${DAY_NAMES_PL_ACC[newDay] || newDay}. 🏐` });
               console.log("Default game day set to:", newDay);
             }
-          } else if (state.askedAboutGame) {
+          } else if (state.askedAboutGame && looksLikeGameResponse(text)) {
             const { analyzeGameResponse, DAY_NAMES_PL_ACC } = require("./reminder");
             const result = await analyzeGameResponse(recentMessages, cfg);
             if (result.playing === true && result.day) {

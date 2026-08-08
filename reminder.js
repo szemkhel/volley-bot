@@ -286,6 +286,26 @@ async function generateMotivation(config) {
   }
 }
 
+// Batch sibling of generateMotivation — N distinct messages in one Claude call, for textPool.js to
+// stash in Postgres and hand out one-per-request instead of a fresh call every time someone asks.
+async function generateMotivationBatch(n, config) {
+  try {
+    const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY || config.anthropicApiKey });
+    const resp = await client.messages.create({
+      model: CREATIVE_MODEL,
+      max_tokens: 120 * n,
+      messages: [{
+        role: "user",
+        content: `Napisz ${n} RÓŻNYCH krótkich (1-2 zdania każda) wiadomości motywacyjnych po polsku dla grupy znajomych grających w siatkówkę. Energiczne, żartobliwe, koleżeńskie, każda z jednym pasującym emoji. KONIECZNIE poprawna i naturalna polszczyzna — bez błędów gramatycznych, ortograficznych ani dziwnych sformułowań/kalek językowych. Bez formatowania markdown. Każda wiadomość musi być WYRAŹNIE inna od pozostałych (inny żart, inny obraz, inny styl). Zwróć TYLKO ${n} wiadomości oddzielonych znakiem "|||" (bez numeracji, bez pustych linii, bez dodatkowych komentarzy).`
+      }]
+    });
+    return stripMarkdown(resp.content[0].text).split("|||").map(s => s.trim()).filter(Boolean);
+  } catch (err) {
+    console.error("generateMotivationBatch error:", err.message);
+    return [];
+  }
+}
+
 async function generateMvpCongrats(name, votes, config) {
   try {
     const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY || config.anthropicApiKey });
@@ -324,6 +344,27 @@ async function generateMvpHaiku(name, config) {
   } catch (err) {
     console.error("generateMvpHaiku error:", err.message);
     return fallback;
+  }
+}
+
+// Batch sibling of generateMvpHaiku — N distinct name-free haiku in one call, for textPool.js.
+// Name-free by construction (same rule as the single version), so any haiku in the pool fits any
+// future MVP winner.
+async function generateMvpHaikuBatch(n, config) {
+  try {
+    const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY || config.anthropicApiKey });
+    const resp = await client.messages.create({
+      model: CREATIVE_MODEL,
+      max_tokens: 80 * n,
+      messages: [{
+        role: "user",
+        content: `Napisz ${n} RÓŻNYCH krótkich polskich haiku (każde dokładnie 3 linijki), klimat siatkarski/sportowy, tryumfalny, o zwycięstwie MVP tygodnia. NIE wspominaj żadnego imienia w żadnym z nich. KONIECZNIE poprawna, naturalna polszczyzna bez błędów językowych. Każde haiku musi być WYRAŹNIE inne od pozostałych (inny obraz, inne słowa). Zwróć TYLKO ${n} haiku (każde jako dokładnie 3 linijki), poszczególne haiku oddzielone znakiem "|||" (bez numeracji, bez cudzysłowów, bez dodatkowych komentarzy, bez markdown).`
+      }]
+    });
+    return stripMarkdown(resp.content[0].text).split("|||").map(s => s.trim()).filter(Boolean).filter(h => h.split("\n").length === 3);
+  } catch (err) {
+    console.error("generateMvpHaikuBatch error:", err.message);
+    return [];
   }
 }
 
@@ -419,4 +460,4 @@ async function extractSettlement(text, hallCost, config) {
   }
 }
 
-module.exports = { sendReminder, generateReminder, detectGameDay, analyzeGameResponse, interpretCommand, generateMotivation, generateMvpCongrats, generateMvpHaiku, analyzeFaceForCaricature, proposeFeatures, extractSettlement, DAY_NAMES_PL_ACC, DAY_NAMES_PL };
+module.exports = { sendReminder, generateReminder, detectGameDay, analyzeGameResponse, interpretCommand, generateMotivation, generateMotivationBatch, generateMvpCongrats, generateMvpHaiku, generateMvpHaikuBatch, analyzeFaceForCaricature, proposeFeatures, extractSettlement, DAY_NAMES_PL_ACC, DAY_NAMES_PL };
