@@ -112,20 +112,32 @@ async function syncMvp(mvpList) {
 // and returns it. Null means "no unused row" (pool empty or DB unreachable) — the caller falls
 // back to a live AI call and refills the pool for next time. Reduces per-call Claude spend for
 // text that doesn't need to be unique to a specific moment.
+// SELECT ... FOR UPDATE SKIP LOCKED (not a plain UPDATE-with-subquery) is deliberate: two
+// concurrent draws for the same kind must land on two DIFFERENT rows. A plain
+// `UPDATE ... WHERE id = (SELECT ... LIMIT 1)` lets both statements' subqueries see the same
+// unused row before either commits, so both would return the identical text and only one row
+// actually ends up marked used. SKIP LOCKED makes the second draw skip the row the first already
+// locked and pick a different one instead.
 async function drawPooledText(kind) {
   const p = getPool();
   if (!p) return null;
+  const client = await p.connect();
   try {
-    const r = await p.query(
-      `UPDATE ai_text_pool SET used_at = now()
-       WHERE id = (SELECT id FROM ai_text_pool WHERE kind=$1 AND used_at IS NULL ORDER BY random() LIMIT 1)
-       RETURNING text`,
+    await client.query("BEGIN");
+    const sel = await client.query(
+      "SELECT id, text FROM ai_text_pool WHERE kind=$1 AND used_at IS NULL ORDER BY random() LIMIT 1 FOR UPDATE SKIP LOCKED",
       [kind]
     );
-    return r.rows[0] ? r.rows[0].text : null;
+    if (!sel.rows[0]) { await client.query("ROLLBACK"); return null; }
+    await client.query("UPDATE ai_text_pool SET used_at = now() WHERE id=$1", [sel.rows[0].id]);
+    await client.query("COMMIT");
+    return sel.rows[0].text;
   } catch (e) {
+    try { await client.query("ROLLBACK"); } catch (_) {}
     console.error("[db] drawPooledText failed:", e.message);
     return null;
+  } finally {
+    client.release();
   }
 }
 
