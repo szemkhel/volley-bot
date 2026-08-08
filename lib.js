@@ -288,11 +288,15 @@ function nextAvatarMeta(prev, fresh) {
     faceCount: fresh && fresh.faceCount != null ? fresh.faceCount : null,
     goodFaceFile: p.goodFaceFile || null,
     goodFaceUpdatedAt: p.goodFaceUpdatedAt || null,
-    guessedGender: p.guessedGender || (fresh && fresh.guessedGender) || null,
+    guessedGender: p.guessedGender || null,
   };
+  // Only trust a gender guess made alongside a confident single-face read — the same bar as
+  // goodFaceFile. A guess from a group/couple photo (faceCount 0 or 2+) is low-confidence and
+  // used to stick forever once set; now it can still be corrected by a later clean single-face read.
   if (fresh && fresh.faceCount === 1 && fresh.file) {
     out.goodFaceFile = fresh.file;
     out.goodFaceUpdatedAt = fresh.fetchedAt;
+    if (fresh.guessedGender) out.guessedGender = fresh.guessedGender;
   }
   return out;
 }

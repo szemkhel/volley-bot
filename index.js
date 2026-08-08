@@ -345,7 +345,7 @@ async function sendMvpCaricature(cfg, winner, winnerPhone) {
     const guessedGender = meta && meta.guessedGender;
     const haiku = await getPooledText("mvp_haiku", cfg, generateMvpHaikuBatch, () => generateMvpHaiku(winner.name, cfg));
     const img = await generateCaricature(apiKey, referenceFile, guessedGender, haiku);
-    await sock.sendMessage(cfg.groupJid, { image: img, caption: "🏆🎨" });
+    await sock.sendMessage(cfg.groupJid, { image: img, caption: BOT_TAG + "\n🏆🎨" });
   } catch (e) {
     console.error("[MVP Caricature] failed for", winner.name, ":", e.message);
     await notify(sock, cfg, "⚠️ Nie udało się wygenerować karykatury MVP dla " + winner.name + ": " + e.message);
@@ -358,14 +358,23 @@ async function closeMvpPoll(cfg) {
   const tally = {};
   for (const phone in state.mvpPoll.votes) { const o = state.mvpPoll.votes[phone]; tally[o] = (tally[o] || 0) + 1; }
   const winners = topTiedEntries(tally);
+  const optToPlayer = state.mvpPoll.optToPlayer || {};
   if (!winners.length) {
     await sock.sendMessage(cfg.groupJid, { text: "Nikt nie zagłosował na MVP w tym tygodniu. 🏐" });
     state.mvpPoll = null; saveState(state); return;
   }
+  // Consume the poll BEFORE processing winners, not after. Per winner this now awaits a Claude
+  // haiku call + an OpenAI image generation (~10-40s combined) — a process restart mid-loop (e.g.
+  // an auto-deploy landing at the wrong moment) used to leave state.mvpPoll on disk untouched, so
+  // the next hourly cron tick replayed the WHOLE winner list from scratch: duplicate mvp.json
+  // entries, duplicate group announcements, duplicate OpenAI-billed images. Clearing it up front
+  // means a crash mid-loop can drop a not-yet-processed winner's announcement, but can never
+  // duplicate one — losing one message is far cheaper than duplicating paid image generations.
+  state.mvpPoll = null; saveState(state);
   const members = await currentMemberPhones(cfg);
   const mvp = loadMvp();
   for (const w of winners) {
-    const winner = (state.mvpPoll.optToPlayer && state.mvpPoll.optToPlayer[w.o]) || { name: w.o, phone: null };
+    const winner = optToPlayer[w.o] || { name: w.o, phone: null };
     mvp.push({ date: new Date().toISOString().slice(0, 10), phone: winner.phone, name: winner.name, votes: w.c });
     saveMvp(mvp);
     const congrats = await generateMvpCongrats(winner.name, w.c, cfg);
@@ -381,7 +390,6 @@ async function closeMvpPoll(cfg) {
     console.log("MVP closed, winner:", winner.name, w.c);
     await sendMvpCaricature(cfg, winner, winnerPhone);
   }
-  state.mvpPoll = null; saveState(state);
 }
 
 async function statystykiText(mentionedJid, cfg) {

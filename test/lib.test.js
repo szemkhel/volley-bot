@@ -370,6 +370,17 @@ test("nextAvatarMeta: fetch failure (faceCount null) doesn't clear pinned good f
   assert.strictEqual(out.latestFile, null);
 });
 
+test("nextAvatarMeta: a low-confidence gender guess (group photo) is never pinned", () => {
+  const out = nextAvatarMeta(null, { file: "111.jpg", fetchedAt: "2026-08-01T00:00:00Z", faceCount: 2, guessedGender: "female" });
+  assert.strictEqual(out.guessedGender, null);
+});
+
+test("nextAvatarMeta: a later confident guess corrects a previously pinned one", () => {
+  const prev = { guessedGender: "male" };
+  const out = nextAvatarMeta(prev, { file: "111.jpg", fetchedAt: "2026-08-01T00:00:00Z", faceCount: 1, guessedGender: "female" });
+  assert.strictEqual(out.guessedGender, "female");
+});
+
 test("topTiedEntries: single winner", () => {
   const out = topTiedEntries({ "Ala": 3, "Bob": 1 });
   assert.deepStrictEqual(out, [{ o: "Ala", c: 3 }]);
