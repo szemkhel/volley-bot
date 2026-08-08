@@ -1330,6 +1330,20 @@ async function handleOwnerCommand(text, cfg) {
     }
     return;
   }
+  // HIDDEN, OWNER-ONLY: manual re-send of the most recent MVP caricature — recovery trigger for
+  // when the automated send fails after the poll has already closed (closeMvpPoll only runs once
+  // per poll, so a failed caricature never gets a second try on its own). Not in pomoc/README.
+  if (low === "karykatura" || low === "wyślij karykaturę" || low === "wyslij karykature") {
+    const mvp = loadMvp();
+    const last = mvp[mvp.length - 1];
+    if (!last) { await notify(sock, cfg, "Brak zapisanych zwycięzców MVP."); return; }
+    if (!cfg.groupJid) { await notify(sock, cfg, "Brak groupJid."); return; }
+    await notify(sock, cfg, "🔄 Generuję karykaturę dla " + last.name + "...");
+    const winnerPhone = last.phone ? last.phone.split("@")[0] : null;
+    await sendMvpCaricature(cfg, { name: last.name, phone: last.phone }, winnerPhone);
+    await notify(sock, cfg, "Gotowe — sprawdź grupę (jeśli generowanie się nie powiodło, dostałbyś osobny komunikat o błędzie).");
+    return;
+  }
   if (low.startsWith("cofnij")) {
     const r = doUndo();
     if (r.ok) scheduleReminders(getSock, state, saveState, cfg);
