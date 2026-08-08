@@ -49,7 +49,7 @@ async function refreshAvatars(sock, groupJid, cfg) {
   const meta = loadMeta();
   const md = await sock.groupMetadata(groupJid);
   const participants = md.participants || [];
-  let ok = 0, skipped = 0;
+  let ok = 0, skipped = 0, oneFace = 0, noFace = 0, multiFace = 0, faceCheckFailed = 0;
   for (const p of participants) {
     const phone = p.id.split("@")[0];
     const fetchedAt = new Date().toISOString();
@@ -64,6 +64,10 @@ async function refreshAvatars(sock, groupJid, cfg) {
         const analysis = await analyzeFaceForCaricature(got.buf, mediaType, cfg);
         fresh = { file: got.file, fetchedAt, faceCount: analysis.faceCount, guessedGender: analysis.guessedGender };
         ok++;
+        if (analysis.faceCount === 1) oneFace++;
+        else if (analysis.faceCount === 0) noFace++;
+        else if (analysis.faceCount >= 2) multiFace++;
+        else faceCheckFailed++;
       }
     } catch (e) {
       fresh = { file: null, fetchedAt, faceCount: null, guessedGender: null, error: e.message };
@@ -73,7 +77,7 @@ async function refreshAvatars(sock, groupJid, cfg) {
     await new Promise(r => setTimeout(r, 400));
   }
   saveMeta(meta);
-  return { total: participants.length, ok: ok, skipped: skipped };
+  return { total: participants.length, ok, skipped, oneFace, noFace, multiFace, faceCheckFailed };
 }
 
 module.exports = { refreshAvatars, loadMeta, AVATARS_DIR };
