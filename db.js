@@ -108,4 +108,50 @@ async function syncMvp(mvpList) {
   }
 }
 
-module.exports = { syncFromHistory, syncRoster, syncMvp };
+// Pre-generated AI text pool (motywacja, MVP haiku, ...) — draws one unused row, marks it used,
+// and returns it. Null means "no unused row" (pool empty or DB unreachable) — the caller falls
+// back to a live AI call and refills the pool for next time. Reduces per-call Claude spend for
+// text that doesn't need to be unique to a specific moment.
+async function drawPooledText(kind) {
+  const p = getPool();
+  if (!p) return null;
+  try {
+    const r = await p.query(
+      `UPDATE ai_text_pool SET used_at = now()
+       WHERE id = (SELECT id FROM ai_text_pool WHERE kind=$1 AND used_at IS NULL ORDER BY random() LIMIT 1)
+       RETURNING text`,
+      [kind]
+    );
+    return r.rows[0] ? r.rows[0].text : null;
+  } catch (e) {
+    console.error("[db] drawPooledText failed:", e.message);
+    return null;
+  }
+}
+
+// Bulk-insert a fresh batch of unused texts for a kind. Best-effort — a failed refill just means
+// the next draw falls through to a live AI call again, same as if the pool were still empty.
+async function refillPool(kind, texts) {
+  const p = getPool();
+  if (!p || !texts || !texts.length) return;
+  try {
+    const client = await p.connect();
+    try {
+      await client.query("BEGIN");
+      for (const t of texts) {
+        if (t) await client.query("INSERT INTO ai_text_pool (kind, text) VALUES ($1,$2)", [kind, t]);
+      }
+      await client.query("COMMIT");
+      console.log("[db] refilled ai_text_pool:", kind, texts.length);
+    } catch (e) {
+      await client.query("ROLLBACK");
+      throw e;
+    } finally {
+      client.release();
+    }
+  } catch (e) {
+    console.error("[db] refillPool failed:", e.message);
+  }
+}
+
+module.exports = { syncFromHistory, syncRoster, syncMvp, drawPooledText, refillPool };

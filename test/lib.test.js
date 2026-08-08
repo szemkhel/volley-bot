@@ -2,7 +2,7 @@ const test = require("node:test");
 const assert = require("node:assert");
 const { attendanceFromTally, weightOfOptions, parseAnkieta, nextDateForDay, isAdmin, settlementPeople, matchPoll, parseAbsenceDays, activeInjuryLids, reconnectDelay, healthReport, mergeGameRows, hasBannedVenueWord, votersChoosing, attendanceCounts, pickTopByAttendance, daysUntil,
   parseSettlementShorthand, pollBeatsHistory, looksLikeFullSurname, suggestedInitialName, newAttendeesFromMentions,
-  nextAvatarMeta, topTiedEntries, mvpWinCount } = require("../lib");
+  nextAvatarMeta, topTiedEntries, mvpWinCount, looksLikeOwnerCommand, looksLikeGameResponse } = require("../lib");
 
 test("newAttendeesFromMentions: only genuinely new people, deduped", () => {
   const poll = { voters: {
@@ -393,4 +393,32 @@ test("mvpWinCount: counts matching phone entries", () => {
 
 test("mvpWinCount: null phone → 0", () => {
   assert.strictEqual(mvpWinCount([{ phone: "111@lid" }], null), 0);
+});
+
+test("looksLikeOwnerCommand: unrelated personal note → false", () => {
+  assert.strictEqual(looksLikeOwnerCommand("kupić mleko po pracy"), false);
+  assert.strictEqual(looksLikeOwnerCommand("pamiętaj o wizycie u lekarza"), false);
+});
+
+test("looksLikeOwnerCommand: recognizes command-ish phrasing", () => {
+  assert.strictEqual(looksLikeOwnerCommand("jaki jest status?"), true);
+  assert.strictEqual(looksLikeOwnerCommand("ustaw dzień na czwartek"), true);
+  assert.strictEqual(looksLikeOwnerCommand("pomoc"), true);
+  assert.strictEqual(looksLikeOwnerCommand("wyślij przypomnienie"), true);
+});
+
+test("looksLikeOwnerCommand: bare day name counts", () => {
+  assert.strictEqual(looksLikeOwnerCommand("piątek 20:00"), true);
+});
+
+test("looksLikeGameResponse: unrelated banter → false", () => {
+  assert.strictEqual(looksLikeGameResponse("co tam u ciebie"), false);
+  assert.strictEqual(looksLikeGameResponse("haha dobre"), false);
+});
+
+test("looksLikeGameResponse: yes/no/day signals → true", () => {
+  assert.strictEqual(looksLikeGameResponse("tak"), true);
+  assert.strictEqual(looksLikeGameResponse("nie dzisiaj"), true);
+  assert.strictEqual(looksLikeGameResponse("to lecimy w piątek"), true);
+  assert.strictEqual(looksLikeGameResponse("gramy!"), true);
 });
