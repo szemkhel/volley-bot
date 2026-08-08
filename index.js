@@ -1307,9 +1307,14 @@ async function handleOwnerCommand(text, cfg) {
   // Not in pomoc/README — this is plumbing for the MVP caricature feature, not a user command.
   if (low === "avatary" || low === "odśwież avatary" || low === "odswiez avatary") {
     if (!cfg.groupJid) { await notify(sock, cfg, "Brak groupJid."); return; }
+    await notify(sock, cfg, "🔄 Zaczynam odświeżać avatary i sprawdzać twarze (AI) — może to potrwać kilka minut, dam znać jak skończę.");
     try {
       const r = await require("./avatars").refreshAvatars(sock, cfg.groupJid, cfg);
-      await notify(sock, cfg, "📸 Avatary odświeżone: " + r.ok + "/" + r.total + " pobranych, " + r.skipped + " bez zdjęcia/prywatność.");
+      await notify(sock, cfg,
+        "📸 Avatary odświeżone: " + r.ok + "/" + r.total + " pobranych zdjęć, " + r.skipped + " bez zdjęcia/prywatność.\n" +
+        "🧑‍🎨 Sprawdzenie twarzy: " + r.oneFace + " z jedną twarzą (nadają się na karykaturę), " +
+        r.noFace + " bez twarzy, " + r.multiFace + " z kilkoma twarzami (zdjęcie grupowe)" +
+        (r.faceCheckFailed ? ", " + r.faceCheckFailed + " błąd sprawdzania" : "") + ".");
     } catch (e) {
       await notify(sock, cfg, "Błąd odświeżania avatarów: " + e.message);
     }
