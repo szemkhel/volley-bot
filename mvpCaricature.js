@@ -35,10 +35,13 @@ function bannerPrompt(haiku) {
     haiku.replace(/\n/g, " / ") + "'. Only this haiku text — nothing else written anywhere in the image.";
 }
 
-async function callOpenAiEdit(apiKey, imageBuffer, filename, prompt) {
+async function callOpenAiEdit(apiKey, imageBuffer, filename, mediaType, prompt) {
   const form = new FormData();
   form.append("model", "gpt-image-1");
-  form.append("image[]", new Blob([imageBuffer]), filename);
+  // A Blob built with no `type` defaults to empty, which fetch/FormData serialize as
+  // application/octet-stream — OpenAI's edits endpoint rejects that outright (only accepts
+  // image/jpeg, image/png, image/webp), so the MIME type must be set explicitly here.
+  form.append("image[]", new Blob([imageBuffer], { type: mediaType }), filename);
   form.append("prompt", prompt);
   form.append("size", "1024x1536");
   form.append("n", "1");
@@ -74,7 +77,8 @@ async function generateCaricature(apiKey, referenceFile, guessedGender, haiku) {
     const prompt = "Turn this person into a cartoon caricature captured mid-action during a " +
       "volleyball game, " + pose + ". " + STYLE + " Keep the person's recognizable facial " +
       "features: hairstyle, facial hair, glasses if present in the reference photo. " + banner;
-    return await callOpenAiEdit(apiKey, fs.readFileSync(referenceFile), path.basename(referenceFile), prompt);
+    const mediaType = referenceFile.toLowerCase().endsWith(".png") ? "image/png" : "image/jpeg";
+    return await callOpenAiEdit(apiKey, fs.readFileSync(referenceFile), path.basename(referenceFile), mediaType, prompt);
   }
   const genderWord = guessedGender === "female" ? "female" : "male";
   const prompt = "A friendly-looking adult " + genderWord + " amateur volleyball player, " +
