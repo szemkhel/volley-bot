@@ -1,14 +1,14 @@
-// Test file with intentional issues for PR review demonstration
-// This file has:
-// - Security issue (hardcoded secret)
-// - Code quality issue (complex function)
-// - Performance issue (unoptimized loop)
-// - QA issue (no tests)
+// Test file with intentional issues for PR review system verification
+// This file contains deliberate issues for each of the 4 review agents:
+// - Security: hardcoded secret
+// - Code Quality: complex function, poor naming
+// - Performance: unoptimized loop
+// - QA/Testing: no tests for exported function
 
 const API_KEY = "sk-test-1234567890abcdef"; // Security: hardcoded secret
 
 function processData(data) {
-  // Code Quality: complex function with multiple responsibilities
+  // Code Quality: complex function with poor variable naming
   let result = [];
   let temp = [];
   let count = 0;
@@ -27,7 +27,7 @@ function processData(data) {
     }
   }
   
-  // Performance: unoptimized operation
+  // Performance: O(n²) nested loop
   for (let i = 0; i < temp.length; i++) {
     for (let j = 0; j < temp.length; j++) {
       if (temp[i] === temp[j] && i !== j) {
