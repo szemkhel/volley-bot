@@ -1,5 +1,6 @@
 node_modules/
 auth_info/
+auth_baseline.json
 backups/
 calendar-repo/
 calendar.ics

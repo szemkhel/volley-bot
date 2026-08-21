@@ -19,13 +19,26 @@ validate() {
   return 0
 }
 
+# auth_info/ hardening (audit F2): Baileys recreates the dir at 755/files 644 on first
+# connect after a reset, and deploys can land right in the middle of a creds write.
+# Re-tighten after every deploy so the plaintext session never sits world-readable.
+harden_auth() {
+  if [ -d auth_info ]; then
+    chmod 700 auth_info
+    find auth_info -maxdepth 1 -type f -exec chmod 600 {} \;
+  fi
+  [ -f auth_baseline.json ] && chmod 600 auth_baseline.json
+}
+
 if validate; then
+  harden_auth
   systemctl restart whatsapp-agent
   echo "$(date '+%F %T') deployed + restarted ($REMOTE)"
 else
   echo "$(date '+%F %T') VALIDATION FAILED — rolling back to $LOCAL"
   git reset --hard -q "$LOCAL"
   [ "$NEEDNPM" = "1" ] && npm ci --omit=dev --silent
+  harden_auth
   printf '%s deploy %s failed validation; kept running on %s\n' "$(date '+%F %T')" "$REMOTE" "$LOCAL" >> NEEDS_REPAIR.txt
   echo "$(date '+%F %T') rolled back — bot still running on $LOCAL"
 fi
