@@ -9,7 +9,8 @@ const http = require("http");
 const { notify } = require("./notify");
 const { DAY_WORDS, attendanceFromTally, weightOfOptions, parseAnkieta, nextDateForDay, isAdmin, settlementPeople, matchPoll, parseAbsenceDays, activeInjuryLids, reconnectDelay, healthReport, mergeGameRows, attendanceCounts, pickTopByAttendance, daysUntil,
   pollBeatsHistory, looksLikeFullSurname, suggestedInitialName, newAttendeesFromMentions,
-  topTiedEntries, mvpWinCount, looksLikeOwnerCommand, looksLikeGameResponse } = require("./lib");
+  topTiedEntries, mvpWinCount, looksLikeOwnerCommand, looksLikeGameResponse,
+  authStateSnapshot, authStateDiffEvents } = require("./lib");
 
 const DIR = __dirname;
 const STATE_FILE = path.join(DIR, "state.json");
@@ -19,6 +20,8 @@ const HISTORY_FILE = path.join(DIR, "history.json");
 const MVP_FILE = path.join(DIR, "mvp.json");
 const WEEKLOG_FILE = path.join(DIR, "weeklog.json");
 const SUGGEST_FILE = path.join(DIR, "suggestions.json");
+const AUTH_DIR = path.join(DIR, "auth_info");
+const AUTH_BASELINE_FILE = path.join(DIR, "auth_baseline.json");
 const PHONE = process.env.PHONE || "";
 
 // Separate stats per chat: in TEST mode (groupJid === testGroupJid) the bot reads/writes *.test.json,
@@ -1477,7 +1480,18 @@ async function connectToWhatsApp() {
     return _send(jid, content, options);
   };
 
-  sock.ev.on("creds.update", saveCreds);
+  // auth_info/ holds the full WhatsApp session in PLAINTEXT JSON (Baileys, inherent).
+  // Baileys creates the dir at 755 and writes files at 644 — re-tighten after every creds
+  // write so a local read access never sees more than it should (audit F2 / kanban t_75f2e967).
+  sock.ev.on("creds.update", () => {
+    saveCreds();
+    try {
+      fs.chmodSync(AUTH_DIR, 0o700);
+      for (const f of fs.readdirSync(AUTH_DIR)) {
+        try { fs.chmodSync(path.join(AUTH_DIR, f), 0o600); } catch (e) {}
+      }
+    } catch (e) { console.error("[AuthGuard] chmod failed:", e.message); }
+  });
 
   // Address-book name (c.name / verifiedName) = owner-set, AUTHORITATIVE → always updates.
   // pushName (c.notify) only fills an empty name (never overwrites a saved one).
@@ -1937,6 +1951,27 @@ cron.schedule("0 10-20 * * 1", autoPostWeeklyPoll, { timezone: TZ });
 // Nightly 03:00 — backup data files (keep last 14 days)
 cron.schedule("0 3 * * *", backupData, { timezone: TZ });
 backupData();
+
+// Hourly :20 — auth_info/ tamper watch (audit F2 / kanban t_75f2e967).
+// Baileys writes the full WhatsApp session in plaintext JSON; any change to that dir
+// (new file = unexpected re-pair, missing file, size/mtime drift = creds churn) is worth
+// an owner ping. First run just establishes the baseline — no alert.
+// Baseline lives in auth_baseline.json (gitignored, container-only like auth_info/).
+function checkAuthState() {
+  const curr = authStateSnapshot(AUTH_DIR);
+  let prev = null;
+  try { prev = JSON.parse(fs.readFileSync(AUTH_BASELINE_FILE, "utf8")); } catch (e) {}
+  const events = authStateDiffEvents(prev, curr);
+  try { fs.writeFileSync(AUTH_BASELINE_FILE, JSON.stringify(curr)); } catch (e) { console.error("[AuthGuard] baseline write failed:", e.message); }
+  if (!prev) { console.log("[AuthGuard] baseline established (" + curr.files.length + " files)"); return; }
+  if (events.length) {
+    console.log("[AuthGuard] auth_info/ change detected:", events.join("; "));
+    const cfg = loadConfig();
+    notify(getSock(), cfg, "🔐 auth_info/ zmieniło się: " + events.join(", ") + ". Sprawdź, czy to planowane (nowe parowanie / deploy).").catch(e => console.error("[AuthGuard] notify failed:", e.message));
+  }
+}
+cron.schedule("20 * * * *", checkAuthState, { timezone: TZ });
+checkAuthState();
 
 // Mirror production history → Postgres for the public Grafana dashboard (startup + 15-min backstop).
 syncStatsDb();
