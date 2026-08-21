@@ -1,8 +1,12 @@
 const test = require("node:test");
 const assert = require("node:assert");
+const os = require("os");
+const fs = require("fs");
+const path = require("path");
 const { attendanceFromTally, weightOfOptions, parseAnkieta, nextDateForDay, isAdmin, settlementPeople, matchPoll, parseAbsenceDays, activeInjuryLids, reconnectDelay, healthReport, mergeGameRows, hasBannedVenueWord, votersChoosing, attendanceCounts, pickTopByAttendance, daysUntil,
   parseSettlementShorthand, pollBeatsHistory, looksLikeFullSurname, suggestedInitialName, newAttendeesFromMentions,
-  nextAvatarMeta, topTiedEntries, mvpWinCount, looksLikeOwnerCommand, looksLikeGameResponse } = require("../lib");
+  nextAvatarMeta, topTiedEntries, mvpWinCount, looksLikeOwnerCommand, looksLikeGameResponse,
+  authStateSnapshot, authStateDiffEvents } = require("../lib");
 
 test("newAttendeesFromMentions: only genuinely new people, deduped", () => {
   const poll = { voters: {
@@ -432,4 +436,63 @@ test("looksLikeGameResponse: yes/no/day signals → true", () => {
   assert.strictEqual(looksLikeGameResponse("nie dzisiaj"), true);
   assert.strictEqual(looksLikeGameResponse("to lecimy w piątek"), true);
   assert.strictEqual(looksLikeGameResponse("gramy!"), true);
+});
+
+// ---- auth_info/ hardening (kanban t_75f2e967) ----
+
+test("authStateDiffEvents: identical snapshots → no events", () => {
+  const snap = { dir: "auth_info", mtime: 1000, size: 4096, files: [
+    { name: "creds.json", mtime: 1000, size: 100 },
+    { name: "keys.json", mtime: 2000, size: 200 },
+  ]};
+  assert.deepStrictEqual(authStateDiffEvents(snap, snap), []);
+});
+
+test("authStateDiffEvents: new file is flagged", () => {
+  const prev = { dir: "d", mtime: 1, size: 1, files: [{ name: "creds.json", mtime: 1, size: 100 }] };
+  const curr = { dir: "d", mtime: 1, size: 1, files: [
+    { name: "creds.json", mtime: 1, size: 100 },
+    { name: "NEW_KEY.json", mtime: 2, size: 50 },
+  ]};
+  const events = authStateDiffEvents(prev, curr);
+  assert.ok(events.some(e => e.includes("new file") && e.includes("NEW_KEY.json")));
+});
+
+test("authStateDiffEvents: missing file is flagged", () => {
+  const prev = { dir: "d", mtime: 1, size: 1, files: [{ name: "creds.json", mtime: 1, size: 100 }] };
+  const curr = { dir: "d", mtime: 1, size: 1, files: [] };
+  const events = authStateDiffEvents(prev, curr);
+  assert.ok(events.some(e => e.includes("missing file") && e.includes("creds.json")));
+});
+
+test("authStateDiffEvents: size change is flagged", () => {
+  const prev = { dir: "d", mtime: 1, size: 1, files: [{ name: "creds.json", mtime: 1, size: 100 }] };
+  const curr = { dir: "d", mtime: 1, size: 1, files: [{ name: "creds.json", mtime: 1, size: 150 }] };
+  const events = authStateDiffEvents(prev, curr);
+  assert.ok(events.some(e => e.includes("size changed") && e.includes("creds.json")));
+});
+
+test("authStateDiffEvents: mtime change >1s is flagged, <1s ignored", () => {
+  const prev = { dir: "d", mtime: 1, size: 1, files: [{ name: "creds.json", mtime: 1000, size: 100 }] };
+  const far = { dir: "d", mtime: 1, size: 1, files: [{ name: "creds.json", mtime: 5000, size: 100 }] };
+  const near = { dir: "d", mtime: 1, size: 1, files: [{ name: "creds.json", mtime: 1500, size: 100 }] };
+  assert.ok(authStateDiffEvents(prev, far).some(e => e.includes("mtime changed")));
+  assert.deepStrictEqual(authStateDiffEvents(prev, near), []);
+});
+
+test("authStateDiffEvents: null prev (first run) → no events (baseline)", () => {
+  assert.deepStrictEqual(authStateDiffEvents(null, { dir: "d", mtime: 1, size: 1, files: [] }), []);
+});
+
+test("authStateSnapshot: reads real dir and sorts files by name", () => {
+  const d = fs.mkdtempSync(path.join(os.tmpdir(), "auth-"));
+  fs.writeFileSync(path.join(d, "z.json"), "zzz");
+  fs.writeFileSync(path.join(d, "a.json"), "aa");
+  fs.mkdirSync(path.join(d, "subdir")); // non-file entry — must be skipped
+  const snap = authStateSnapshot(d);
+  assert.strictEqual(snap.dir, d);
+  assert.strictEqual(snap.files.length, 2);
+  assert.strictEqual(snap.files[0].name, "a.json");
+  assert.strictEqual(snap.files[1].name, "z.json");
+  fs.rmSync(d, { recursive: true, force: true });
 });
