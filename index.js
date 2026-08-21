@@ -1779,11 +1779,11 @@ function pushCalendar() {
     if (!fs.existsSync(path.join(repo, ".git"))) return;
     fs.copyFileSync(path.join(DIR, "calendar.ics"), path.join(repo, "calendar.ics"));
     const cp = require("child_process");
-    const changed = cp.execSync("git -C " + repo + " status --porcelain", { encoding: "utf8" }).trim();
+    const changed = cp.execFileSync("git", ["-C", repo, "status", "--porcelain"], { encoding: "utf8" }).trim();
     if (!changed) return;
-    cp.execSync("git -C " + repo + " add calendar.ics");
-    cp.execSync('git -C ' + repo + ' commit -m "update calendar"');
-    cp.execSync("git -C " + repo + " push", { stdio: "ignore" });
+    cp.execFileSync("git", ["-C", repo, "add", "calendar.ics"]);
+    cp.execFileSync("git", ["-C", repo, "commit", "-m", "update calendar"]);
+    cp.execFileSync("git", ["-C", repo, "push"], { stdio: "ignore" });
     console.log("[Calendar] pushed to git");
   } catch (e) { console.error("calendar push error:", e.message); }
 }
