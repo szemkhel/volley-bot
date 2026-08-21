@@ -1990,13 +1990,43 @@ cron.schedule("0 4 1 * *", () => {
 // Calendar ICS feed (subscribable) — regenerate hourly + serve over HTTP
 writeCalendar(loadConfig());
 cron.schedule("0 * * * *", () => writeCalendar(loadConfig()), { timezone: TZ });
+
+// Lightweight per-IP rate limiter: 60 requests per rolling 60-second window.
+// Keeps a home-LAN HTTP endpoint from being a trivial DoS vector without
+// pulling in a dependency.
+const RATE_LIMIT = 60;
+const RATE_WINDOW_MS = 60_000;
+const rateBuckets = new Map(); // ip -> { count, windowStart }
+function rateLimited(ip) {
+  const now = Date.now();
+  let bucket = rateBuckets.get(ip);
+  if (!bucket || now - bucket.windowStart > RATE_WINDOW_MS) {
+    bucket = { count: 0, windowStart: now };
+    rateBuckets.set(ip, bucket);
+  }
+  bucket.count++;
+  // Periodically prune stale buckets to bound memory.
+  if (rateBuckets.size > 1000) {
+    for (const [key, b] of rateBuckets) {
+      if (now - b.windowStart > RATE_WINDOW_MS) rateBuckets.delete(key);
+    }
+  }
+  return bucket.count > RATE_LIMIT;
+}
+
 http.createServer((req, res) => {
+  const ip = req.socket.remoteAddress || "unknown";
+  if (rateLimited(ip)) {
+    res.writeHead(429, { "Content-Type": "text/plain", "Retry-After": "60" });
+    res.end("rate limited");
+    return;
+  }
   if (req.url === "/" || req.url.indexOf("/calendar.ics") === 0 || req.url.indexOf("/siatkowka.ics") === 0) {
-    try {
-      const ics = fs.readFileSync(path.join(DIR, "calendar.ics"));
+    // Async file read — never blocks the Node event loop (fixes t_ff7a675b F6).
+    fs.promises.readFile(path.join(DIR, "calendar.ics")).then(ics => {
       res.writeHead(200, { "Content-Type": "text/calendar; charset=utf-8" });
       res.end(ics);
-    } catch (e) { res.writeHead(404); res.end("no calendar yet"); }
+    }).catch(() => { res.writeHead(404); res.end("no calendar yet"); });
   } else if (req.url === "/health") {
     // Scraped by the external monitor (separate tool, outside this repo). 200 = healthy,
     // 503 = degraded, no answer at all = process dead — all three are meaningful to it.
