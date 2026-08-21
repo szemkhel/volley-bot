@@ -1,5 +1,10 @@
 // Pure, side-effect-free helpers — unit tested in test/lib.test.js
 // (kept free of WhatsApp / state / network so they can run in CI)
+// fs/path are required here for authStateSnapshot's default dir reader; the function
+// also accepts an injected `list` so the diff logic stays testable without a real dir.
+
+const fs = require("fs");
+const path = require("path");
 
 const DAY_WORDS = {
   "poniedzialek": "monday", "poniedziałek": "monday",
@@ -340,6 +345,64 @@ function looksLikeGameResponse(text) {
   return false;
 }
 
+// ---- auth_info/ hardening (kanban t_75f2e967, audit F2) ----
+// Baileys writes the full WhatsApp session (signed keys, pre-keys, sender keys, identity seed)
+// as PLAINTEXT JSON into auth_info/. The plaintext is inherent to useMultiFileAuthState —
+// there is no code-level encryption. The hardening is operational:
+//   1. perms  — index.js wraps saveCreds to chmod 700/600 the dir/files after every write
+//   2. watch  — index.js snapshots the dir hourly and DMs the owner on any new/missing/changed file
+// The two pure helpers below are what the watcher is built on; they live here (not in index.js)
+// so the diff logic is unit-testable without a WhatsApp socket or a real auth dir.
+
+// Snapshot the auth directory: one { name, mtime, size } per file, sorted by name,
+// plus dir-level mtime/size aggregates. `list` is injectable (defaults to fs.readdirSync)
+// so the comparator is unit-testable without a real dir.
+function authStateSnapshot(dir, list) {
+  const read = list || ((d) => fs.readdirSync(d));
+  const out = { dir: dir, mtime: null, size: null, files: [] };
+  try {
+    const st = fs.statSync(dir);
+    out.mtime = st.mtimeMs;
+    out.size = st.size;
+  } catch (e) {
+    return out;
+  }
+  try {
+    for (const name of read(dir)) {
+      try {
+        const f = path.join(dir, name);
+        const s = fs.statSync(f);
+        if (s.isFile()) out.files.push({ name, mtime: s.mtimeMs, size: s.size });
+      } catch (e) {}
+    }
+  } catch (e) {}
+  out.files.sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
+  return out;
+}
+
+// Compare two snapshots (prev, curr). Returns a human-readable list of change events.
+// An empty list means "no change". `prev === null` (first run) means "baseline",
+// which the caller treats as no-alert.
+function authStateDiffEvents(prev, curr) {
+  const events = [];
+  if (!prev || !curr) return events;
+  const p = {};
+  for (const f of (prev.files || [])) p[f.name] = f;
+  const c = {};
+  for (const f of (curr.files || [])) c[f.name] = f;
+  for (const name of Object.keys(c)) {
+    if (!p[name]) events.push("new file: " + name);
+    else if (p[name].size !== c[name].size) events.push("size changed: " + name);
+    else if (Math.abs(p[name].mtime - c[name].mtime) > 1000) events.push("mtime changed: " + name);
+  }
+  for (const name of Object.keys(p)) {
+    if (!c[name]) events.push("missing file: " + name);
+  }
+  if (prev.size !== curr.size) events.push("dir size changed");
+  return events;
+}
+
 module.exports = { DAY_WORDS, attendanceFromTally, weightOfOptions, parseAnkieta, nextDateForDay, isAdmin, settlementPeople, matchPoll, parseAbsenceDays, activeInjuryLids, reconnectDelay, healthReport, mergeGameRows, hasBannedVenueWord, votersChoosing, attendanceCounts, pickTopByAttendance, daysUntil,
 parseSettlementShorthand, pollBeatsHistory, looksLikeFullSurname, suggestedInitialName, newAttendeesFromMentions,
-nextAvatarMeta, topTiedEntries, mvpWinCount, looksLikeOwnerCommand, looksLikeGameResponse };
+nextAvatarMeta, topTiedEntries, mvpWinCount, looksLikeOwnerCommand, looksLikeGameResponse,
+authStateSnapshot, authStateDiffEvents };
