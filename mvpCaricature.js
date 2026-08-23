@@ -74,9 +74,12 @@ async function generateCaricature(apiKey, referenceFile, guessedGender, haiku) {
   const pose = randomPose();
   const banner = bannerPrompt(haiku);
   if (referenceFile && fs.existsSync(referenceFile)) {
+    // Don't name "glasses" (or other specific accessories) here: an image edit already preserves
+    // whatever eyewear is actually visible, while merely mentioning the word primes gpt-image-1 into
+    // drawing glasses onto people who don't wear any (an observed MVP-caricature failure).
     const prompt = "Turn this person into a cartoon caricature captured mid-action during a " +
       "volleyball game, " + pose + ". " + STYLE + " Keep the person's recognizable facial " +
-      "features: hairstyle, facial hair, glasses if present in the reference photo. " + banner;
+      "features: hairstyle and facial hair. " + banner;
     const mediaType = referenceFile.toLowerCase().endsWith(".png") ? "image/png" : "image/jpeg";
     return await callOpenAiEdit(apiKey, fs.readFileSync(referenceFile), path.basename(referenceFile), mediaType, prompt);
   }
