@@ -12,14 +12,14 @@ Deeper project history and open TODOs live in the project memory (`project_whats
 | | |
 |---|---|
 | Local clone (edit here) | `C:\Users\patry\volley-bot` |
-| Production | LXC **119** (`192.168.31.203`), `/opt/whatsapp-agent`, systemd `whatsapp-agent.service` |
+| Production | LXC **119** (internal IP — see private project memory `project_whatsapp_agent`), `/opt/whatsapp-agent`, systemd `whatsapp-agent.service` |
 | Repo | `szemkhel/volley-bot` — **public**; source on `main`, calendar feed on orphan branch `calendar` |
-| Postgres (stats mirror) | LXC 107 (`192.168.31.103:5432`), DB `volley` |
-| Public stats dashboard | https://siatkowka.agatrymki.net/public-dashboards/04eb09a0ce994c36851e51d5e877f1b4 |
+| Postgres (stats mirror) | LXC 107 (internal host — see private project memory `project_whatsapp_agent`), DB `volley` |
+| Public stats dashboard | `siatkowka.agatrymki.net` — the public dashboard link is embedded in the bot's `bot ranking` / `bot frekwencja` replies |
 | Container ops | `mcp__proxmox__proxmox_execute_vm_command(node=pve, vmid=119, type=lxc, …)` |
 | Logs | `journalctl -u whatsapp-agent -f`, or central Loki via the `/loki` skill |
 
-The bot runs on the **owner's own WhatsApp number** (48690331000, Patryk) via Baileys pair-code.
+The bot runs on the **owner's own WhatsApp number** (value in container `.env`, key `PHONE`; never in tracked files) via Baileys pair-code.
 Auth lives in `auth_info/` on the container — **never delete it**, it would force a re-pair.
 
 ## Commands
@@ -100,15 +100,10 @@ then `npm run check && npm test` → branch → push → PR → squash-merge →
 so the szemkhel PAT bypasses it — I open and merge the PR myself rather than handing it back.
 
 **Auth:** there is no `gh` CLI and Git Credential Manager won't release the token non-interactively.
-Recover the classic PAT from the container clone's remote:
-
-```
-git -C /opt/whatsapp-agent remote get-url origin | grep -oE 'ghp_[A-Za-z0-9]+'
-```
-
-Hold it in-session only, push via an inline-token URL (never write it into `.git/config`), and
-scrub it from any echoed output. The same PAT also authenticates the `github` MCP server.
-It is flagged for rotation to a fine-grained token.
+GitHub credentials for the container's clone live in its git credential helper — the recovery
+procedure is kept in the private project memory `project_whatsapp_agent` only, **never in tracked
+files**. The same PAT also authenticates the `github` MCP server. It is flagged for rotation to a
+fine-grained token (repo scope only, 90-day expiry).
 
 **Deploy:** `deploy.sh` on cron `*/3`, or trigger now with
 `cd /opt/whatsapp-agent && bash deploy.sh`. It validates (`node --check` on every `*.js` +
