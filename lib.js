@@ -164,6 +164,23 @@ function newAttendeesFromMentions(mentionedJids, poll) {
   return out;
 }
 
+// Extra MVP candidates added by @mention when the auto-list misses someone — a guest, or a player
+// who showed up but never RSVP'd "yes" (so mvpCandidates() never saw them). Resolves each mentioned
+// JID to {phone, name} from contacts, dropping anyone already among `existing` and duplicate
+// mentions. Kept pure so createMvpPoll's "force these in" trimming is unit-tested.
+function extraMvpCandidates(mentionedJids, existing, contacts) {
+  const have = new Set((existing || []).map(c => c.phone));
+  const out = [];
+  const seen = new Set();
+  for (const jid of (mentionedJids || [])) {
+    const phone = (jid || "").split("@")[0];
+    if (!phone || have.has(phone) || seen.has(phone)) continue;
+    seen.add(phone);
+    out.push({ phone: phone, name: (contacts && contacts[phone]) || ("Gracz " + phone.slice(-4)) });
+  }
+  return out;
+}
+
 // "bot imie" convention: first name + at most a short surname marker (a bare initial or a
 // two-letter abbreviation, optional trailing dot) — never a full surname, since these names feed
 // the public stats dashboard. Anything longer needs confirmation before it's written.
@@ -403,6 +420,6 @@ function authStateDiffEvents(prev, curr) {
 }
 
 module.exports = { DAY_WORDS, attendanceFromTally, weightOfOptions, parseAnkieta, nextDateForDay, isAdmin, settlementPeople, matchPoll, parseAbsenceDays, activeInjuryLids, reconnectDelay, healthReport, mergeGameRows, hasBannedVenueWord, votersChoosing, attendanceCounts, pickTopByAttendance, daysUntil,
-parseSettlementShorthand, pollBeatsHistory, looksLikeFullSurname, suggestedInitialName, newAttendeesFromMentions,
+parseSettlementShorthand, pollBeatsHistory, looksLikeFullSurname, suggestedInitialName, newAttendeesFromMentions, extraMvpCandidates,
 nextAvatarMeta, topTiedEntries, mvpWinCount, looksLikeOwnerCommand, looksLikeGameResponse,
 authStateSnapshot, authStateDiffEvents };

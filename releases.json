@@ -1,5 +1,12 @@
 [
   {
+    "version": "v1.33",
+    "date": "28 sierpnia 2026",
+    "notes": [
+      "Do głosowania MVP można teraz dopisać osobę spoza automatycznej listy — np. gościa, który zagrał, ale nie głosował w ankiecie. Wystarczy oznaczyć ją, odpowiadając na pytanie bota („tak @Zuzia”) albo w komendzie „bot mvp @Zuzia”. Ręcznie dopisani mają pierwszeństwo w limicie 12 kandydatów."
+    ]
+  },
+  {
     "version": "v1.32",
     "date": "8 sierpnia 2026",
     "notes": [

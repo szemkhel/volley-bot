@@ -8,7 +8,7 @@ const cron = require("node-cron");
 const http = require("http");
 const { notify } = require("./notify");
 const { DAY_WORDS, attendanceFromTally, weightOfOptions, parseAnkieta, nextDateForDay, isAdmin, settlementPeople, matchPoll, parseAbsenceDays, activeInjuryLids, reconnectDelay, healthReport, mergeGameRows, attendanceCounts, pickTopByAttendance, daysUntil,
-  pollBeatsHistory, looksLikeFullSurname, suggestedInitialName, newAttendeesFromMentions,
+  pollBeatsHistory, looksLikeFullSurname, suggestedInitialName, newAttendeesFromMentions, extraMvpCandidates,
   topTiedEntries, mvpWinCount, looksLikeOwnerCommand, looksLikeGameResponse,
   authStateSnapshot, authStateDiffEvents } = require("./lib");
 
@@ -296,19 +296,30 @@ function mvpCandidates() {
 // and no vote appears at all. Do not raise this without a different voting mechanism.
 const MVP_MAX_OPTIONS = 12;
 
-async function createMvpPoll(cfg) {
+async function createMvpPoll(cfg, extraMentions) {
   const all = mvpCandidates();
-  if (all.length < 2) { await sock.sendMessage(cfg.groupJid, { text: "Za mało graczy z ostatniego meczu na głosowanie MVP. 🏐" }); return; }
+  // People explicitly @-added to the vote ("bot mvp @osoba", or "tak dodaj @osoba" to the offer).
+  // A guest, or someone who played without ever RSVPing "yes", is invisible to mvpCandidates(), so
+  // the organizer can hand-add them by tagging. Resolved + deduped against the auto list in lib.
+  const extra = extraMvpCandidates(extraMentions, all, loadContacts());
+  if (all.length + extra.length < 2) { await sock.sendMessage(cfg.groupJid, { text: "Za mało graczy z ostatniego meczu na głosowanie MVP. 🏐" }); return; }
   // More players than poll slots. Keeping the first 12 of an arbitrarily ordered list punished
   // whoever happened to sit past position 12, so pick the most regular players by season
-  // attendance instead. Someone is still left out — nothing else fits in a WhatsApp poll — but
-  // the choice is now deterministic and defensible, and the omission is reported to the owner.
-  let candidates = pickTopByAttendance(all, attendanceCounts(loadHistory()), MVP_MAX_OPTIONS);
-  if (all.length > candidates.length) {
+  // attendance instead. Hand-added players are guaranteed their slot (the organizer asked for them
+  // by name); the auto candidates fill whatever the 12-option limit leaves. Someone may still be
+  // left out — nothing else fits in a WhatsApp poll — but the choice is deterministic and the
+  // omission is reported to the owner. NB: pickTopByAttendance treats limit 0 as "no limit", so
+  // only call it when slots actually remain.
+  const forced = extra.slice(0, MVP_MAX_OPTIONS);
+  const autoSlots = MVP_MAX_OPTIONS - forced.length;
+  const autoPicked = autoSlots > 0 ? pickTopByAttendance(all, attendanceCounts(loadHistory()), autoSlots) : [];
+  const candidates = forced.concat(autoPicked);
+  const wanted = all.length + extra.length;
+  if (wanted > candidates.length) {
     const kept = new Set(candidates.map(c => c.phone));
-    const omitted = all.filter(c => !kept.has(c.phone));
+    const omitted = all.concat(extra).filter(c => !kept.has(c.phone));
     console.log("[MVP] " + omitted.length + " player(s) did not fit the " + MVP_MAX_OPTIONS + "-option poll:", omitted.map(c => c.name).join(", "));
-    await notify(sock, cfg, "⚠️ MVP: zagrało " + all.length + " osób, a ankieta WhatsAppa mieści " + MVP_MAX_OPTIONS + ". Wybrałem osoby z najwyższą frekwencją; nie zmieścili się: " + omitted.map(c => c.name).join(", ") + ".");
+    await notify(sock, cfg, "⚠️ MVP: kandydatów jest " + wanted + ", a ankieta WhatsAppa mieści " + MVP_MAX_OPTIONS + ". Wybrałem osoby z najwyższą frekwencją (dopisani ręcznie mają pierwszeństwo); nie zmieścili się: " + omitted.map(c => c.name).join(", ") + ".");
   }
   const seenN = {};
   const finalOpts = candidates.map(c => { let n = c.name; if (seenN[n]) { seenN[n]++; n = n + " (" + seenN[n] + ")"; } else seenN[n] = 1; return n; });
@@ -776,7 +787,7 @@ async function offerMvpPoll(cfg, authorPhone) {
   saveState(state);
   // Same selection rule as createMvpPoll, so the names offered are exactly the names voted on.
   const names = pickTopByAttendance(cands, attendanceCounts(loadHistory()), MVP_MAX_OPTIONS).map(c => c.name).join(", ");
-  await sock.sendMessage(cfg.groupJid, { text: "🏆 Zrobić głosowanie MVP za ten mecz?" + String.fromCharCode(10) + "Kandydaci: " + names + "." + String.fromCharCode(10) + "Napisz tak/nie." });
+  await sock.sendMessage(cfg.groupJid, { text: "🏆 Zrobić głosowanie MVP za ten mecz?" + String.fromCharCode(10) + "Kandydaci: " + names + "." + String.fromCharCode(10) + "Napisz tak/nie. Kogoś brakuje? Dopisz go, oznaczając w odpowiedzi, np. „tak @Zuzia”." });
 }
 
 async function handleImieConfirmAnswer(text, senderPhone, isFromMe, cfg) {
@@ -802,7 +813,7 @@ async function handleImieConfirmAnswer(text, senderPhone, isFromMe, cfg) {
   return true;
 }
 
-async function handleMvpOfferAnswer(text, senderPhone, isFromMe, cfg) {
+async function handleMvpOfferAnswer(text, senderPhone, isFromMe, cfg, mentionedJids) {
   const p = state.pendingMvpOffer;
   if (!p) return false;
   if (Date.now() - (p.ts || 0) > 30 * 60 * 1000) { state.pendingMvpOffer = null; saveState(state); return false; }
@@ -814,7 +825,9 @@ async function handleMvpOfferAnswer(text, senderPhone, isFromMe, cfg) {
   const allowed = (senderPhone && senderPhone === p.authorPhone) || isAdmin(senderPhone, isFromMe, cfg.admins || [], (cfg.notifyLid || "").split("@")[0]);
   if (!allowed) return false;
   state.pendingMvpOffer = null; saveState(state);
-  if (yes) await createMvpPoll(cfg);
+  // "tak @Zuzia" — tagging in the confirmation adds those people to the poll (a guest who never
+  // RSVP'd won't be an auto-candidate). Same idea as tagging in the settlement drift question.
+  if (yes) await createMvpPoll(cfg, mentionedJids);
   else await sock.sendMessage(cfg.groupJid, { text: "Ok, bez głosowania MVP w tym tygodniu. 🏐" });
   return true;
 }
@@ -1068,7 +1081,7 @@ async function handleGroupCommand(text, cfg, mentioned, senderPhone, isFromMe) {
   }
   const low = text.trim().toLowerCase();
   if (low.startsWith("pomoc") || low.startsWith("help")) {
-    await reply("Komendy 🏐\nDla wszystkich:\n• bot status — liczba graczy\n• bot frekwencja — frekwencja i trend\n• bot ranking — obecność graczy\n• bot statystyki @osoba — statystyki gracza\n• bot kontuzja <czas> — zgłoś dłuższą przerwę (pomijam Cię w przypomnieniach)\n• bot motywacja — motywacja od bota\n• bot kalendarz — jak dodać kalendarz treningów\n• bot zmiany [ile] — co nowego w bocie\n• bot sugestia <treść> — zaproponuj komendę/funkcję\nTylko admini 🛡️:\n• bot ankieta piątek 20:00 — nowa ankieta\n• bot zmień dzień/godzinę — zmiana terminu\n• bot mvp — głosowanie MVP\n• bot rozlicz — podziel koszt sali\n• bot koszt sali 160 — ustaw koszt wynajmu\n• bot przypomnij — przypomnij teraz\n• bot przypominajki — lista nadchodzących przypomnień\n• bot nie gramy / cofnij odwołanie\n• bot imie @osoba Imię S. — popraw czyjeś imię w statystykach (bez pełnego nazwiska)");
+    await reply("Komendy 🏐\nDla wszystkich:\n• bot status — liczba graczy\n• bot frekwencja — frekwencja i trend\n• bot ranking — obecność graczy\n• bot statystyki @osoba — statystyki gracza\n• bot kontuzja <czas> — zgłoś dłuższą przerwę (pomijam Cię w przypomnieniach)\n• bot motywacja — motywacja od bota\n• bot kalendarz — jak dodać kalendarz treningów\n• bot zmiany [ile] — co nowego w bocie\n• bot sugestia <treść> — zaproponuj komendę/funkcję\nTylko admini 🛡️:\n• bot ankieta piątek 20:00 — nowa ankieta\n• bot zmień dzień/godzinę — zmiana terminu\n• bot mvp [@osoby] — głosowanie MVP (możesz dopisać gości oznaczeniem)\n• bot rozlicz — podziel koszt sali\n• bot koszt sali 160 — ustaw koszt wynajmu\n• bot przypomnij — przypomnij teraz\n• bot przypominajki — lista nadchodzących przypomnień\n• bot nie gramy / cofnij odwołanie\n• bot imie @osoba Imię S. — popraw czyjeś imię w statystykach (bez pełnego nazwiska)");
     return;
   }
   if (low.startsWith("sugestia") || low.startsWith("sugestie") || low.startsWith("propozycja") || low.startsWith("pomysł") || low.startsWith("pomysl")) {
@@ -1181,7 +1194,8 @@ async function handleGroupCommand(text, cfg, mentioned, senderPhone, isFromMe) {
   }
   if (low.startsWith("mvp")) {
     if (await denyIfNotAdmin()) return;
-    await createMvpPoll(cfg);
+    // "bot mvp @gość" hand-adds tagged people (guests, no-RSVP players) alongside the auto list.
+    await createMvpPoll(cfg, mentioned);
     return;
   }
   if (low.startsWith("ankieta") || low.startsWith("pool") || low.startsWith("pula")) {
@@ -1658,7 +1672,7 @@ async function connectToWhatsApp() {
           if (state.pendingPlayerUpdate) consumed = await handlePlayerUpdateAnswer(stext, aPhone, !!msg.key.fromMe, cfg, mentionedJid);
           // MVP offer comes AFTER the player-count question, so a "tak" can never be stolen from it.
           // In practice they never overlap: the offer is only created once that one is resolved.
-          if (!consumed && state.pendingMvpOffer) consumed = await handleMvpOfferAnswer(stext, aPhone, !!msg.key.fromMe, cfg);
+          if (!consumed && state.pendingMvpOffer) consumed = await handleMvpOfferAnswer(stext, aPhone, !!msg.key.fromMe, cfg, mentionedJid);
           if (!consumed && state.pendingImieConfirm) consumed = await handleImieConfirmAnswer(stext, aPhone, !!msg.key.fromMe, cfg);
           if (consumed) continue;
           await detectSettlement(stext, aPhone, cfg);
