@@ -59,12 +59,15 @@ link pojawia się też pod odpowiedziami na `bot ranking` / `bot frekwencja` / `
   osoby**, które mam dopisać do dzisiejszych statystyk (np. `@Patryk @Kuba`). Oznaczeni trafiają
   do podziału kosztu i do kandydatów na MVP, tak jakby zagłosowali w ankiecie
 - Po zamknięciu rozliczenia bot proponuje głosowanie MVP i pokazuje listę kandydatów (osoby, które
-  zadeklarowały grę). Odpowiedz `tak`, żeby je wystawić, albo `nie`. Efekt jest identyczny jak przy
-  `bot mvp` — to ta sama ankieta
+  zadeklarowały grę). Odpowiedz `tak`, żeby je wystawić, albo `nie`. Kogoś brakuje na liście (np.
+  gość, który zagrał, ale nie głosował w ankiecie)? **Oznacz go w odpowiedzi**, np. `tak @Zuzia` —
+  trafi do ankiety obok automatycznych kandydatów. Efekt jest identyczny jak przy `bot mvp`
 
 ### Głosowanie MVP
 - `bot mvp` — wystawia ankietę „MVP tygodnia” z graczami ostatniego meczu (admin). Zamyka się
   automatycznie po 24 h, a zwycięzca dostaje gratulacje i trafia do panelu ze statystykami
+- `bot mvp @Zuzia @Kuba` — jak wyżej, ale dopisuje oznaczone osoby do kandydatów (gość albo ktoś,
+  kto zagrał, lecz nie głosował w ankiecie). Dopisani ręcznie mają pierwszeństwo w limicie 12 opcji
 - Ankieta WhatsAppa mieści **maksymalnie 12 opcji** — to ograniczenie platformy, nie bota. Gdy
   zagrało więcej osób, bot wybiera 12 graczy z najwyższą frekwencją w sezonie i wysyła
   organizatorowi prywatną wiadomość z listą tych, którzy się nie zmieścili

@@ -4,7 +4,7 @@ const os = require("os");
 const fs = require("fs");
 const path = require("path");
 const { attendanceFromTally, weightOfOptions, parseAnkieta, nextDateForDay, isAdmin, settlementPeople, matchPoll, parseAbsenceDays, activeInjuryLids, reconnectDelay, healthReport, mergeGameRows, hasBannedVenueWord, votersChoosing, attendanceCounts, pickTopByAttendance, daysUntil,
-  parseSettlementShorthand, pollBeatsHistory, looksLikeFullSurname, suggestedInitialName, newAttendeesFromMentions,
+  parseSettlementShorthand, pollBeatsHistory, looksLikeFullSurname, suggestedInitialName, newAttendeesFromMentions, extraMvpCandidates,
   nextAvatarMeta, topTiedEntries, mvpWinCount, looksLikeOwnerCommand, looksLikeGameResponse,
   authStateSnapshot, authStateDiffEvents } = require("../lib");
 
@@ -25,6 +25,22 @@ test("newAttendeesFromMentions: a 'Nie gram' voter still counts as new if tagged
 test("newAttendeesFromMentions: empty/missing inputs", () => {
   assert.deepStrictEqual(newAttendeesFromMentions([], { voters: {} }), []);
   assert.deepStrictEqual(newAttendeesFromMentions(null, null), []);
+});
+
+test("extraMvpCandidates: adds tagged non-candidates, resolves names, dedups", () => {
+  const existing = [{ phone: "111", name: "Anna" }, { phone: "222", name: "Bartek" }];
+  const contacts = { "333": "Zuzia" };
+  const out = extraMvpCandidates(["333@lid", "111@lid", "333@lid", "70444@lid"], existing, contacts);
+  // 111 is already a candidate, 333 repeated → one 333; 70444 unknown → "Gracz 0444" (last 4)
+  assert.deepStrictEqual(out, [
+    { phone: "333", name: "Zuzia" },
+    { phone: "70444", name: "Gracz 0444" },
+  ]);
+});
+
+test("extraMvpCandidates: empty/missing inputs", () => {
+  assert.deepStrictEqual(extraMvpCandidates([], [], {}), []);
+  assert.deepStrictEqual(extraMvpCandidates(null, null, null), []);
 });
 
 test("looksLikeFullSurname: bare or short initials pass, full surnames flagged", () => {
