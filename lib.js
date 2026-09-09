@@ -37,6 +37,25 @@ function weightOfOptions(opts) {
   return attendanceFromTally(t);
 }
 
+// How many players a poll currently has signed up ("Gram" = 1, "+1"/"+2" = 2/3).
+function confirmedPlayers(poll) {
+  const voters = (poll && poll.voters) || {};
+  let n = 0;
+  for (const lid in voters) n += weightOfOptions(voters[lid].options);
+  return n;
+}
+
+// Is the squad already big enough that a reminder would be pure noise? A reminder exists only to
+// fill the game up, so once `threshold` people have signed up there's nothing left to chase and
+// tagging every silent member just spams the group.
+// A missing/zero/negative threshold returns false on purpose: a misconfigured value must never be
+// able to silence reminders altogether.
+function squadIsFull(poll, threshold) {
+  const t = Number(threshold);
+  if (!(t > 0)) return false;
+  return confirmedPlayers(poll) >= t;
+}
+
 // Parse "piątek 20:00" / "czwartek 21" -> { day: "friday", time: "20:00" }
 function parseAnkieta(text) {
   const lower = (text || "").toLowerCase();
@@ -419,7 +438,7 @@ function authStateDiffEvents(prev, curr) {
   return events;
 }
 
-module.exports = { DAY_WORDS, attendanceFromTally, weightOfOptions, parseAnkieta, nextDateForDay, isAdmin, settlementPeople, matchPoll, parseAbsenceDays, activeInjuryLids, reconnectDelay, healthReport, mergeGameRows, hasBannedVenueWord, votersChoosing, attendanceCounts, pickTopByAttendance, daysUntil,
+module.exports = { DAY_WORDS, attendanceFromTally, weightOfOptions, confirmedPlayers, squadIsFull, parseAnkieta, nextDateForDay, isAdmin, settlementPeople, matchPoll, parseAbsenceDays, activeInjuryLids, reconnectDelay, healthReport, mergeGameRows, hasBannedVenueWord, votersChoosing, attendanceCounts, pickTopByAttendance, daysUntil,
 parseSettlementShorthand, pollBeatsHistory, looksLikeFullSurname, suggestedInitialName, newAttendeesFromMentions, extraMvpCandidates,
 nextAvatarMeta, topTiedEntries, mvpWinCount, looksLikeOwnerCommand, looksLikeGameResponse,
 authStateSnapshot, authStateDiffEvents };
