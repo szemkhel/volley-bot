@@ -3,7 +3,7 @@ const assert = require("node:assert");
 const os = require("os");
 const fs = require("fs");
 const path = require("path");
-const { attendanceFromTally, weightOfOptions, parseAnkieta, nextDateForDay, isAdmin, settlementPeople, matchPoll, parseAbsenceDays, activeInjuryLids, reconnectDelay, healthReport, mergeGameRows, hasBannedVenueWord, votersChoosing, attendanceCounts, pickTopByAttendance, daysUntil,
+const { attendanceFromTally, weightOfOptions, confirmedPlayers, squadIsFull, reminderSkipAt, parseAnkieta, nextDateForDay, isAdmin, settlementPeople, matchPoll, parseAbsenceDays, activeInjuryLids, reconnectDelay, healthReport, mergeGameRows, hasBannedVenueWord, votersChoosing, attendanceCounts, pickTopByAttendance, daysUntil,
   parseSettlementShorthand, pollBeatsHistory, looksLikeFullSurname, suggestedInitialName, newAttendeesFromMentions, extraMvpCandidates,
   nextAvatarMeta, topTiedEntries, mvpWinCount, looksLikeOwnerCommand, looksLikeGameResponse,
   authStateSnapshot, authStateDiffEvents } = require("../lib");
@@ -511,4 +511,46 @@ test("authStateSnapshot: reads real dir and sorts files by name", () => {
   assert.strictEqual(snap.files[0].name, "a.json");
   assert.strictEqual(snap.files[1].name, "z.json");
   fs.rmSync(d, { recursive: true, force: true });
+});
+
+test("confirmedPlayers: counts Gram as 1 and guests as 1+N, ignores no/undecided", () => {
+  const poll = { voters: {
+    "111": { options: ["Gram"] },
+    "222": { options: ["Gram i przyprowadzam +2"] },
+    "333": { options: ["Nie gram"] },
+    "444": { options: ["Nie wiem"] },
+  } };
+  assert.strictEqual(confirmedPlayers(poll), 4);   // 1 + 3
+  assert.strictEqual(confirmedPlayers({ voters: {} }), 0);
+  assert.strictEqual(confirmedPlayers(null), 0);
+});
+
+test("squadIsFull: true only once the threshold is reached", () => {
+  const withGram = n => ({ voters: Object.fromEntries(
+    Array.from({ length: n }, (_, i) => [String(i), { options: ["Gram"] }])) });
+  assert.strictEqual(squadIsFull(withGram(11), 12), false);
+  assert.strictEqual(squadIsFull(withGram(12), 12), true);   // >= threshold, not >
+  assert.strictEqual(squadIsFull(withGram(15), 12), true);
+});
+
+test("squadIsFull: guests count toward the threshold", () => {
+  // 10 solo players + one bringing +2 = 13 heads, so the reminder is pointless at 12
+  const voters = { "x": { options: ["Gram i przyprowadzam +2"] } };
+  for (let i = 0; i < 10; i++) voters[String(i)] = { options: ["Gram"] };
+  assert.strictEqual(squadIsFull({ voters }, 12), true);
+});
+
+test("squadIsFull: a missing or non-positive threshold never silences reminders", () => {
+  const full = { voters: { a: { options: ["Gram"] }, b: { options: ["Gram"] } } };
+  assert.strictEqual(squadIsFull(full, 0), false);
+  assert.strictEqual(squadIsFull(full, -1), false);
+  assert.strictEqual(squadIsFull(full, undefined), false);
+  assert.strictEqual(squadIsFull(full, "nonsense"), false);
+});
+
+test("reminderSkipAt: reminderSkipAt wins, then optimumPlayers, then 12", () => {
+  assert.strictEqual(reminderSkipAt({ reminderSkipAt: 10, optimumPlayers: 12 }), 10);
+  assert.strictEqual(reminderSkipAt({ optimumPlayers: 14 }), 14);
+  assert.strictEqual(reminderSkipAt({}), 12);
+  assert.strictEqual(reminderSkipAt({ reminderSkipAt: 0 }), 0);   // explicit opt-out survives
 });

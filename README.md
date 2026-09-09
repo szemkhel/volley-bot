@@ -24,8 +24,10 @@ Wszystkie komendy piszesz **na grupie**, zaczynając od słowa **`bot`**.
 - `bot ankieta piątek 20:00` — tworzy nową ankietę na trening. Opcje: **Gram**, **Nie gram**, **Nie wiem**, **Gram i przyprowadzam +1**, **Gram i przyprowadzam +2**
 - `bot status` — liczba graczy na najbliższy trening
 - `bot przypomnij` — wysyła przypomnienie do osób, które jeszcze nie zagłosowały. Gdy do gry
-  zostały maksymalnie 2 dni, działa jak ostatnie wołanie: dopytuje też osoby z głosem „Nie wiem"
-- `bot przypominajki` — (admin) lista nadchodzących, zaplanowanych przypomnień dla gier w tym tygodniu
+  zostały maksymalnie 2 dni, działa jak ostatnie wołanie: dopytuje też osoby z głosem „Nie wiem".
+  Wysyła zawsze, również przy pełnym składzie — pomijane są tylko przypomnienia automatyczne
+- `bot przypominajki` — (admin) lista nadchodzących, zaplanowanych przypomnień dla gier w tym
+  tygodniu; oznacza też te, które przy obecnym składzie zostaną pominięte
 - `bot kontuzja <czas>` — zgłoś dłuższą przerwę (np. `bot kontuzja 2 tygodnie`, `bot kontuzja miesiąc`); bot pomija Cię w przypomnieniach do końca przerwy. Powrót: `bot kontuzja koniec`. Admin może zgłosić za kogoś: `bot kontuzja @osoba 3 tygodnie`
 
 ### Zmiany terminu
@@ -84,6 +86,10 @@ link pojawia się też pod odpowiedziami na `bot ranking` / `bot frekwencja` / `
   terminy przesuwają się, gdy gramy w inny dzień. Pierwsze zagaduje tych, którzy jeszcze nie
   zagłosowali. **Ostatnie dodatkowo dopytuje osoby z „Nie wiem"** — to już ostatni dzień na
   odwołanie sali, więc niezdecydowany głos nie pomaga bardziej niż brak głosu
+- **Bot nie przypomina, gdy skład jest już pełny** — jeśli w momencie wysyłki zapisanych jest co
+  najmniej 12 osób (`reminderSkipAt` w `config.json`, gościom z „+1"/„+2" też się liczy), to
+  przypomnienie zostaje pominięte. Każdy z dwóch terminów sprawdzany jest osobno, więc gdy ktoś
+  wypisze się po pierwszym przypomnieniu, drugie znów pójdzie
 - Bot oznacza (@) tylko osoby **aktualnie należące do grupy** — skład sprawdza na żywo przed
   każdym przypomnieniem, rozliczeniem i ogłoszeniem MVP, żeby nie zostawiać martwych oznaczeń
 - **Wtorek 12:00** — jeśli nie ma ankiety, pyta grupę czy gramy

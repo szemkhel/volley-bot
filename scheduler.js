@@ -1,7 +1,7 @@
 const cron = require("node-cron");
 const fs = require("fs");
 const { sendReminder, DAY_NAMES_PL_ACC } = require("./reminder");
-const { activeInjuryLids } = require("./lib");
+const { activeInjuryLids, confirmedPlayers, squadIsFull, reminderSkipAt } = require("./lib");
 const { notify } = require("./notify");
 
 let activeCrons = [];
@@ -23,6 +23,20 @@ async function fireReminder(getSock, getPollForDay, getExcluded, day, isUrgent) 
   const cfg = JSON.parse(fs.readFileSync(__dirname + "/config.json", "utf8"));
   const label = isUrgent ? "Pilne przypomnienie" : "Pierwsze przypomnienie";
   const dayPl = DAY_NAMES_PL_ACC[day] || day;
+
+  // Squad already full? Then there is nothing to chase and the tag-everyone reminder is just spam.
+  // Checked here rather than inside sendReminder so a MANUAL `bot przypomnij` still always sends —
+  // that one is an explicit human decision. Both scheduled runs are gated independently against the
+  // live vote count, so a drop-out between the first and the urgent slot re-arms the urgent one.
+  const threshold = reminderSkipAt(cfg);
+  const pollNow = getPollForDay(day);
+  if (!pollNow) return; // game no longer tracked (e.g. cancelled meanwhile)
+  if (squadIsFull(pollNow, threshold)) {
+    const have = confirmedPlayers(pollNow);
+    console.log(`[Scheduler] ${label} (${dayPl}) skipped — ${have} players already signed up (threshold ${threshold})`);
+    await notify(getSock(), cfg, `${label} (${dayPl}) pominięte — jest już ${have} zapisanych (próg ${threshold}).`);
+    return;
+  }
 
   // The socket reconnects frequently; a fire can land during a brief outage. Retry on transient
   // connection errors (reading the live socket each attempt) so the reminder isn't silently lost.

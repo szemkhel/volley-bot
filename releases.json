@@ -1,5 +1,12 @@
 [
   {
+    "version": "v1.34",
+    "date": "9 września 2026",
+    "notes": [
+      "Koniec przypominań przy pełnym składzie. Jeśli w chwili wysyłki na trening zapisanych jest już co najmniej 12 osób (osoby z „+1”/„+2” liczą się razem z gośćmi), bot nie zaczepia już tych, którzy nie zagłosowali. Oba terminy sprawdzane są osobno, więc gdy ktoś się wypisze po pierwszym przypomnieniu, drugie i tak pójdzie. Komenda „bot przypomnij” działa jak dotychczas — wysyła zawsze."
+    ]
+  },
+  {
     "version": "v1.33",
     "date": "28 sierpnia 2026",
     "notes": [
