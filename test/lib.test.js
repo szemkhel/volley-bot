@@ -3,7 +3,7 @@ const assert = require("node:assert");
 const os = require("os");
 const fs = require("fs");
 const path = require("path");
-const { attendanceFromTally, weightOfOptions, confirmedPlayers, squadIsFull, parseAnkieta, nextDateForDay, isAdmin, settlementPeople, matchPoll, parseAbsenceDays, activeInjuryLids, reconnectDelay, healthReport, mergeGameRows, hasBannedVenueWord, votersChoosing, attendanceCounts, pickTopByAttendance, daysUntil,
+const { attendanceFromTally, weightOfOptions, confirmedPlayers, squadIsFull, reminderSkipAt, parseAnkieta, nextDateForDay, isAdmin, settlementPeople, matchPoll, parseAbsenceDays, activeInjuryLids, reconnectDelay, healthReport, mergeGameRows, hasBannedVenueWord, votersChoosing, attendanceCounts, pickTopByAttendance, daysUntil,
   parseSettlementShorthand, pollBeatsHistory, looksLikeFullSurname, suggestedInitialName, newAttendeesFromMentions, extraMvpCandidates,
   nextAvatarMeta, topTiedEntries, mvpWinCount, looksLikeOwnerCommand, looksLikeGameResponse,
   authStateSnapshot, authStateDiffEvents } = require("../lib");
@@ -549,7 +549,6 @@ test("squadIsFull: a missing or non-positive threshold never silences reminders"
 });
 
 test("reminderSkipAt: reminderSkipAt wins, then optimumPlayers, then 12", () => {
-  const { reminderSkipAt } = require("../scheduler");
   assert.strictEqual(reminderSkipAt({ reminderSkipAt: 10, optimumPlayers: 12 }), 10);
   assert.strictEqual(reminderSkipAt({ optimumPlayers: 14 }), 14);
   assert.strictEqual(reminderSkipAt({}), 12);

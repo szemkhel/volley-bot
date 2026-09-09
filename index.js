@@ -7,7 +7,7 @@ const path = require("path");
 const cron = require("node-cron");
 const http = require("http");
 const { notify } = require("./notify");
-const { DAY_WORDS, attendanceFromTally, weightOfOptions, confirmedPlayers, squadIsFull, parseAnkieta, nextDateForDay, isAdmin, settlementPeople, matchPoll, parseAbsenceDays, activeInjuryLids, reconnectDelay, healthReport, mergeGameRows, attendanceCounts, pickTopByAttendance, daysUntil,
+const { DAY_WORDS, attendanceFromTally, weightOfOptions, confirmedPlayers, squadIsFull, reminderSkipAt, parseAnkieta, nextDateForDay, isAdmin, settlementPeople, matchPoll, parseAbsenceDays, activeInjuryLids, reconnectDelay, healthReport, mergeGameRows, attendanceCounts, pickTopByAttendance, daysUntil,
   pollBeatsHistory, looksLikeFullSurname, suggestedInitialName, newAttendeesFromMentions, extraMvpCandidates,
   topTiedEntries, mvpWinCount, looksLikeOwnerCommand, looksLikeGameResponse,
   authStateSnapshot, authStateDiffEvents } = require("./lib");
@@ -1020,7 +1020,7 @@ function doUndo() {
 // Reminder times mirror the scheduler: first = game day −3 @ 18:00, urgent = game day −2 @ 17:00.
 function przypomniajkiText() {
   const { DAY_NAMES_PL } = require("./reminder");
-  const { DAY_SCHEDULES, reminderSkipAt } = require("./scheduler");
+  const { DAY_SCHEDULES } = require("./scheduler");
   const threshold = reminderSkipAt(loadConfig());
   const cap = s => s ? s.charAt(0).toUpperCase() + s.slice(1) : s;
   const addDays = (ymd, delta) => { const d = new Date(ymd + "T12:00:00Z"); d.setUTCDate(d.getUTCDate() + delta); return d.toISOString().slice(0, 10); };

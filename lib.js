@@ -56,6 +56,15 @@ function squadIsFull(poll, threshold) {
   return confirmedPlayers(poll) >= t;
 }
 
+// Headcount at which a SCHEDULED reminder is skipped. Falls back to the frekwencja chart's target
+// line, then to a full squad of 12; set `reminderSkipAt: 0` to always remind. Lives here rather
+// than in scheduler.js so the tests can reach it — CI runs with no node_modules, and requiring
+// scheduler.js drags in node-cron.
+function reminderSkipAt(cfg) {
+  const raw = (cfg && cfg.reminderSkipAt != null) ? cfg.reminderSkipAt : (cfg && cfg.optimumPlayers);
+  return raw == null ? 12 : Number(raw);
+}
+
 // Parse "piątek 20:00" / "czwartek 21" -> { day: "friday", time: "20:00" }
 function parseAnkieta(text) {
   const lower = (text || "").toLowerCase();
@@ -438,7 +447,7 @@ function authStateDiffEvents(prev, curr) {
   return events;
 }
 
-module.exports = { DAY_WORDS, attendanceFromTally, weightOfOptions, confirmedPlayers, squadIsFull, parseAnkieta, nextDateForDay, isAdmin, settlementPeople, matchPoll, parseAbsenceDays, activeInjuryLids, reconnectDelay, healthReport, mergeGameRows, hasBannedVenueWord, votersChoosing, attendanceCounts, pickTopByAttendance, daysUntil,
+module.exports = { DAY_WORDS, attendanceFromTally, weightOfOptions, confirmedPlayers, squadIsFull, reminderSkipAt, parseAnkieta, nextDateForDay, isAdmin, settlementPeople, matchPoll, parseAbsenceDays, activeInjuryLids, reconnectDelay, healthReport, mergeGameRows, hasBannedVenueWord, votersChoosing, attendanceCounts, pickTopByAttendance, daysUntil,
 parseSettlementShorthand, pollBeatsHistory, looksLikeFullSurname, suggestedInitialName, newAttendeesFromMentions, extraMvpCandidates,
 nextAvatarMeta, topTiedEntries, mvpWinCount, looksLikeOwnerCommand, looksLikeGameResponse,
 authStateSnapshot, authStateDiffEvents };

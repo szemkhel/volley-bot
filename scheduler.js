@@ -1,7 +1,7 @@
 const cron = require("node-cron");
 const fs = require("fs");
 const { sendReminder, DAY_NAMES_PL_ACC } = require("./reminder");
-const { activeInjuryLids, confirmedPlayers, squadIsFull } = require("./lib");
+const { activeInjuryLids, confirmedPlayers, squadIsFull, reminderSkipAt } = require("./lib");
 const { notify } = require("./notify");
 
 let activeCrons = [];
@@ -16,13 +16,6 @@ const DAY_SCHEDULES = {
   monday:    { first: "0 18 * * 5", urgent: "0 17 * * 6", labels: ["pt 18:00", "sb 17:00"] },
   tuesday:   { first: "0 18 * * 6", urgent: "0 17 * * 0", labels: ["sb 18:00", "nd 17:00"] },
 };
-
-// Headcount at which a scheduled reminder is skipped. Falls back to the frekwencja chart's target
-// line, then to a full squad of 12; set `reminderSkipAt: 0` to always remind.
-function reminderSkipAt(cfg) {
-  const raw = (cfg && cfg.reminderSkipAt != null) ? cfg.reminderSkipAt : (cfg && cfg.optimumPlayers);
-  return raw == null ? 12 : Number(raw);
-}
 
 // `getSock` returns the CURRENT socket — never capture it, the WA socket is recreated on every reconnect.
 // `getExcluded` returns the LIDs to skip (players on injury/absence break), re-read at fire time.
@@ -102,4 +95,4 @@ function scheduleReminders(getSock, state, saveState, config) {
   else console.log("No games tracked — no reminders scheduled.");
 }
 
-module.exports = { scheduleReminders, reminderSkipAt, DAY_SCHEDULES };
+module.exports = { scheduleReminders, DAY_SCHEDULES };
