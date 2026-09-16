@@ -22,6 +22,10 @@ Wszystkie komendy piszesz **na grupie**, zaczynając od słowa **`bot`**.
 
 ### Ankieta i głosowanie
 - `bot ankieta piątek 20:00` — tworzy nową ankietę na trening. Opcje: **Gram**, **Nie gram**, **Nie wiem**, **Gram i przyprowadzam +1**, **Gram i przyprowadzam +2**
+- `bot ankieta sobota 18:00 390` — to samo, ale z **ceną sali dla tej jednej gry** (np. wyjątkowy
+  termin w droższej hali). Cena trafia do tytułu ankiety („…, koszt 390 zł”), a przy rozliczeniu bot
+  sam ją podzieli. Działa też `bot ankieta sobota 18:00 koszt 390 zł`. Zwykły cotygodniowy trening
+  dalej korzysta z `bot koszt sali`
 - `bot status` — liczba graczy na najbliższy trening
 - `bot przypomnij` — wysyła przypomnienie do osób, które jeszcze nie zagłosowały. Gdy do gry
   zostały maksymalnie 2 dni, działa jak ostatnie wołanie: dopytuje też osoby z głosem „Nie wiem".
@@ -51,11 +55,16 @@ link pojawia się też pod odpowiedziami na `bot ranking` / `bot frekwencja` / `
 ### Rozliczenie sali
 - `bot rozlicz` — bot zapyta o koszt sali i liczbę graczy, podzieli koszt i wskaże komu ile zapłacić (osoby z +1/+2 płacą za gości), z numerem BLIK
 - `bot rozlicz 100 10` — to samo, ale od razu z danymi (100 zł, 10 osób)
-- `bot koszt sali` — pokazuje zapisany koszt wynajmu; `bot koszt sali 200` ustawia go (admin)
+- Gdy ankieta ma własną cenę (`bot ankieta sobota 18:00 390`), bot nie pyta o koszt:
+  `bot rozlicz` zapyta tylko o liczbę osób, a `bot rozlicz 13` rozliczy od razu 390 zł na 13 osób.
+  Inną kwotę nadal podasz wprost: `bot rozlicz 400 13`
+- `bot koszt sali` — pokazuje zapisany koszt wynajmu (i ceny z ankiet, jeśli jakaś gra ma własną);
+  `bot koszt sali 200` ustawia go (admin)
 - Nie musisz używać komend: jeśli ktoś wrzuci na grupę zwykłą wiadomość z podziałem kosztu
   („po 14,55 zł, BLIK…”), bot sam ją rozpozna i zapisze realną liczbę graczy. Właśnie do tego
   służy zapisany koszt sali — gdy w wiadomości jest tylko kwota na osobę, bez sumy, bot liczy
-  graczy jako *koszt sali ÷ kwota na osobę*, więc nieaktualna wartość da cichy błąd we frekwencji
+  graczy jako *koszt sali ÷ kwota na osobę*, więc nieaktualna wartość da cichy błąd we frekwencji.
+  Jeśli gra ma cenę z ankiety, bot liczy według niej
 - Gdy liczba osób z rozliczenia nie zgadza się z ankietą (np. ankieta: 7, rozliczenie: 200/8), bot
   zapyta, czy zaktualizować liczbę — możesz odpowiedzieć `tak`/`nie`, albo **oznaczyć konkretne
   osoby**, które mam dopisać do dzisiejszych statystyk (np. `@Patryk @Kuba`). Oznaczeni trafiają

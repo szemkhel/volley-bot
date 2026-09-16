@@ -65,16 +65,83 @@ function reminderSkipAt(cfg) {
   return raw == null ? 12 : Number(raw);
 }
 
-// Parse "piątek 20:00" / "czwartek 21" -> { day: "friday", time: "20:00" }
+// Parse "piątek 20:00" / "czwartek 21" / "sobota 18:00 390" / "sobota 18:00 koszt 390,50 zł"
+// -> { day, time, cost }. Extraction order matters:
+//   1. a price WITH a currency ("390 zł", "390pln") goes first, so "390,50 zł" can never be
+//      half-read as a kick-off time;
+//   2. the time — "HH:MM"/"HH.MM", else a bare hour — accepting VALID hours only (0-23). The old
+//      `\d{1,2}` read "sobota 90" as 90:00, and would now also have eaten a two-digit price;
+//   3. whatever number is still left is the price, so "sobota 18 390" = 18:00 for 390 zł.
+// The number boundaries reject a neighbouring digit AND a separator (. , :) next to a digit, so no
+// pattern can bite into the middle of "390.50" or read the "00" of an invalid "25:00" as an hour.
 function parseAnkieta(text) {
   const lower = (text || "").toLowerCase();
   let day = null;
   for (const w in DAY_WORDS) { if (lower.includes(w)) { day = DAY_WORDS[w]; break; } }
+  let rest = lower;
+  const take = m => { rest = rest.slice(0, m.index) + " " + rest.slice(m.index + m[0].length); };
+  const toNum = s => parseFloat(s.replace(",", "."));
+
+  let cost = null;
+  const cm = rest.match(/(?<!\d|\d[.,:])(\d+(?:[.,]\d{1,2})?)\s*(?:zł|zl|pln)/);
+  if (cm) { cost = toNum(cm[1]); take(cm); }
+
   let time = null;
-  const tm = lower.match(/(\d{1,2})[:.](\d{2})/);
-  if (tm) time = tm[1].padStart(2, "0") + ":" + tm[2];
-  else { const th = lower.match(/\b(\d{1,2})\b/); if (th) time = th[1].padStart(2, "0") + ":00"; }
-  return { day, time };
+  const tm = rest.match(/(?<!\d|\d[.,:])([01]?\d|2[0-3])[:.]([0-5]\d)(?!\d|[.,:]\d)/);
+  if (tm) { time = tm[1].padStart(2, "0") + ":" + tm[2]; take(tm); }
+  else {
+    const th = rest.match(/(?<!\d|\d[.,:])([01]?\d|2[0-3])(?!\d|[.,:]\d)/);
+    if (th) { time = th[1].padStart(2, "0") + ":00"; take(th); }
+  }
+
+  if (cost == null) {
+    const bm = rest.match(/(?<!\d|\d[.,:])(\d+(?:[.,]\d{1,2})?)(?!\d|[.,:]\d)/);
+    if (bm) cost = toNum(bm[1]);
+  }
+  if (!(cost > 0)) cost = null;
+  return { day, time, cost };
+}
+
+// 390 -> "390", 390.5 -> "390,50": Polish decimal comma, whole złoty stay clean.
+function formatPln(n) {
+  const v = Number(n);
+  if (!isFinite(v)) return "";
+  return Number.isInteger(v) ? String(v) : v.toFixed(2).replace(".", ",");
+}
+
+// WhatsApp poll title. The price rides in the title so people see what they sign up for BEFORE
+// they vote — it's the same number the settlement will split later.
+function pollName(dayPl, time, cost) {
+  return "Siatkówka " + (dayPl || "") + (time ? " " + time : "") +
+    (cost > 0 ? ", koszt " + formatPln(cost) + " zł" : "") + " 🏐 — gracie?";
+}
+
+// Hall cost to split for a game. A price given when the poll was posted
+// (`bot ankieta sobota 18:00 390`) wins over the global `bot koszt sali`, which stays the default
+// for the regular weekly game — otherwise a one-off 390 zł game would silently be split as 160.
+function settlementCost(poll, cfg) {
+  const own = Number(poll && poll.hallCost);
+  if (own > 0) return own;
+  return Number(cfg && cfg.hallCost) || 160;
+}
+
+// `bot rozlicz …` arguments -> { cost, people }; either may be null and the dialog asks for it.
+// Two numbers = cost + people, exactly as before. When the poll carries its own price, the cost
+// can be skipped: a lone number is then the headcount if it looks like one (whole, 2-50 — the
+// sanity window detectSettlement uses), a bigger one overrides the price, anything else is ignored.
+// Without a poll price a lone number stays ignored as it always was, so the regular weekly game
+// behaves exactly as before.
+function parseRozliczArgs(text, pollCost) {
+  const nums = ((text || "").match(/\d+([.,]\d+)?/g) || []).map(x => parseFloat(x.replace(",", ".")));
+  if (nums.length >= 2) return { cost: nums[0], people: Math.round(nums[1]) };
+  const known = Number(pollCost) > 0 ? Number(pollCost) : null;
+  if (!known) return { cost: null, people: null };
+  if (nums.length === 1) {
+    const n = nums[0];
+    if (Number.isInteger(n) && n >= 2 && n <= 50) return { cost: known, people: n };
+    if (n > 50) return { cost: n, people: null };
+  }
+  return { cost: known, people: null };
 }
 
 // Next date (YYYY-MM-DD, Europe/Warsaw) for a weekday name; includes today if it matches.
@@ -447,7 +514,7 @@ function authStateDiffEvents(prev, curr) {
   return events;
 }
 
-module.exports = { DAY_WORDS, attendanceFromTally, weightOfOptions, confirmedPlayers, squadIsFull, reminderSkipAt, parseAnkieta, nextDateForDay, isAdmin, settlementPeople, matchPoll, parseAbsenceDays, activeInjuryLids, reconnectDelay, healthReport, mergeGameRows, hasBannedVenueWord, votersChoosing, attendanceCounts, pickTopByAttendance, daysUntil,
+module.exports = { DAY_WORDS, attendanceFromTally, weightOfOptions, confirmedPlayers, squadIsFull, reminderSkipAt, parseAnkieta, formatPln, pollName, settlementCost, parseRozliczArgs, nextDateForDay, isAdmin, settlementPeople, matchPoll, parseAbsenceDays, activeInjuryLids, reconnectDelay, healthReport, mergeGameRows, hasBannedVenueWord, votersChoosing, attendanceCounts, pickTopByAttendance, daysUntil,
 parseSettlementShorthand, pollBeatsHistory, looksLikeFullSurname, suggestedInitialName, newAttendeesFromMentions, extraMvpCandidates,
 nextAvatarMeta, topTiedEntries, mvpWinCount, looksLikeOwnerCommand, looksLikeGameResponse,
 authStateSnapshot, authStateDiffEvents };

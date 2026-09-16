@@ -1,5 +1,13 @@
 [
   {
+    "version": "v1.35",
+    "date": "16 września 2026",
+    "notes": [
+      "Ankieta z ceną sali: „bot ankieta sobota 18:00 390” tworzy ankietę z kosztem w tytule („…, koszt 390 zł”). Przydaje się przy wyjątkowych terminach w innej hali — każdy widzi cenę, zanim zagłosuje.",
+      "Przy rozliczeniu takiej gry bot pamięta cenę: „bot rozlicz” zapyta już tylko o liczbę osób, a „bot rozlicz 13” od razu podzieli 390 zł na 13 osób. Inną kwotę nadal można podać wprost: „bot rozlicz 400 13”. Zwykły cotygodniowy trening dalej korzysta z „bot koszt sali”."
+    ]
+  },
+  {
     "version": "v1.34",
     "date": "9 września 2026",
     "notes": [

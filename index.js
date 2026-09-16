@@ -7,7 +7,7 @@ const path = require("path");
 const cron = require("node-cron");
 const http = require("http");
 const { notify } = require("./notify");
-const { DAY_WORDS, attendanceFromTally, weightOfOptions, confirmedPlayers, squadIsFull, reminderSkipAt, parseAnkieta, nextDateForDay, isAdmin, settlementPeople, matchPoll, parseAbsenceDays, activeInjuryLids, reconnectDelay, healthReport, mergeGameRows, attendanceCounts, pickTopByAttendance, daysUntil,
+const { DAY_WORDS, attendanceFromTally, weightOfOptions, confirmedPlayers, squadIsFull, reminderSkipAt, parseAnkieta, formatPln, pollName, settlementCost, parseRozliczArgs, nextDateForDay, isAdmin, settlementPeople, matchPoll, parseAbsenceDays, activeInjuryLids, reconnectDelay, healthReport, mergeGameRows, attendanceCounts, pickTopByAttendance, daysUntil,
   pollBeatsHistory, looksLikeFullSurname, suggestedInitialName, newAttendeesFromMentions, extraMvpCandidates,
   topTiedEntries, mvpWinCount, looksLikeOwnerCommand, looksLikeGameResponse,
   authStateSnapshot, authStateDiffEvents } = require("./lib");
@@ -578,12 +578,14 @@ function frekwencjaChart(cfg) {
   } catch (e) { console.error("frekwencjaChart error:", e.message); return null; }
 }
 
-async function createPoll(cfg, day, time, targetJid) {
+// `cost` (optional) = this game's hall price from `bot ankieta <dzień> <godz> <cena>`. It is stored
+// on the poll so settlement splits THIS game's price rather than the global cfg.hallCost.
+async function createPoll(cfg, day, time, targetJid, cost) {
   const { DAY_NAMES_PL_ACC } = require("./reminder");
   const { scheduleReminders } = require("./scheduler");
   const gday = day || state.gameDay || "friday";
   const dayPl = DAY_NAMES_PL_ACC[gday] || gday || "";
-  const name = "Siatkówka " + dayPl + (time ? " " + time : "") + " 🏐 — gracie?";
+  const name = pollName(dayPl, time, cost);
   const sent = await sock.sendMessage(targetJid, { poll: { name, values: POLL_OPTIONS, selectableCount: 1 } });
 
   // Replace any existing tracked poll for the SAME day (re-post, incl. disabled); leave other days intact
@@ -603,6 +605,7 @@ async function createPoll(cfg, day, time, targetJid) {
     gameDay: gday,
     gameTime: time || null,
     gameDate: nextDateForDay(gday),
+    hallCost: cost > 0 ? cost : null,
     voters: {},
     timestamp: Date.now(),
   };
@@ -702,7 +705,9 @@ function getCurrentPlayerCount() {
 
 async function detectSettlement(text, authorPhone, cfg) {
   if (!/\d/.test(text) || !/(z[łl]\b|zlotych|pln|blik)/i.test(text)) return;
-  const hallCost = Number(cfg.hallCost) || 160;
+  // Same poll settleAndClose will close. A "po 30 zł" message is turned into a headcount as
+  // cost / per-person, so it MUST use that game's own price when it has one.
+  const hallCost = settlementCost(primaryPoll(), cfg);
   const { extractSettlement } = require("./reminder");
   const info = await extractSettlement(text, hallCost, cfg);
   if (info && info.error) {
@@ -1085,7 +1090,7 @@ async function handleGroupCommand(text, cfg, mentioned, senderPhone, isFromMe) {
   }
   const low = text.trim().toLowerCase();
   if (low.startsWith("pomoc") || low.startsWith("help")) {
-    await reply("Komendy 🏐\nDla wszystkich:\n• bot status — liczba graczy\n• bot frekwencja — frekwencja i trend\n• bot ranking — obecność graczy\n• bot statystyki @osoba — statystyki gracza\n• bot kontuzja <czas> — zgłoś dłuższą przerwę (pomijam Cię w przypomnieniach)\n• bot motywacja — motywacja od bota\n• bot kalendarz — jak dodać kalendarz treningów\n• bot zmiany [ile] — co nowego w bocie\n• bot sugestia <treść> — zaproponuj komendę/funkcję\nTylko admini 🛡️:\n• bot ankieta piątek 20:00 — nowa ankieta\n• bot zmień dzień/godzinę — zmiana terminu\n• bot mvp [@osoby] — głosowanie MVP (możesz dopisać gości oznaczeniem)\n• bot rozlicz — podziel koszt sali\n• bot koszt sali 160 — ustaw koszt wynajmu\n• bot przypomnij — przypomnij teraz (też przy pełnym składzie)\n• bot przypominajki — lista nadchodzących przypomnień\n• bot nie gramy / cofnij odwołanie\n• bot imie @osoba Imię S. — popraw czyjeś imię w statystykach (bez pełnego nazwiska)");
+    await reply("Komendy 🏐\nDla wszystkich:\n• bot status — liczba graczy\n• bot frekwencja — frekwencja i trend\n• bot ranking — obecność graczy\n• bot statystyki @osoba — statystyki gracza\n• bot kontuzja <czas> — zgłoś dłuższą przerwę (pomijam Cię w przypomnieniach)\n• bot motywacja — motywacja od bota\n• bot kalendarz — jak dodać kalendarz treningów\n• bot zmiany [ile] — co nowego w bocie\n• bot sugestia <treść> — zaproponuj komendę/funkcję\nTylko admini 🛡️:\n• bot ankieta piątek 20:00 [cena] — nowa ankieta (np. sobota 18:00 390 — z ceną sali do rozliczenia)\n• bot zmień dzień/godzinę — zmiana terminu\n• bot mvp [@osoby] — głosowanie MVP (możesz dopisać gości oznaczeniem)\n• bot rozlicz [osoby] — podziel koszt sali (cena z ankiety, jeśli podana)\n• bot koszt sali 160 — ustaw koszt wynajmu\n• bot przypomnij — przypomnij teraz (też przy pełnym składzie)\n• bot przypominajki — lista nadchodzących przypomnień\n• bot nie gramy / cofnij odwołanie\n• bot imie @osoba Imię S. — popraw czyjeś imię w statystykach (bez pełnego nazwiska)");
     return;
   }
   if (low.startsWith("sugestia") || low.startsWith("sugestie") || low.startsWith("propozycja") || low.startsWith("pomysł") || low.startsWith("pomysl")) {
@@ -1145,11 +1150,19 @@ async function handleGroupCommand(text, cfg, mentioned, senderPhone, isFromMe) {
   }
   if (low.startsWith("rozlicz")) {
     if (await denyIfNotAdmin()) return;
-    const nums = (text.match(/\d+([.,]\d+)?/g) || []).map(function (x) { return parseFloat(x.replace(",", ".")); });
-    if (nums.length >= 2) {
-      state.pendingRozliczenie = { cost: nums[0], people: Math.round(nums[1]), ts: Date.now() };
+    const pp = primaryPoll();
+    const args = parseRozliczArgs(text, pp && pp.hallCost);
+    if (args.cost && args.people) {
+      state.pendingRozliczenie = { cost: args.cost, people: args.people, ts: Date.now() };
       saveState(state);
       await finalizeRozliczenie(cfg);
+      return;
+    }
+    if (args.cost) {
+      // The poll was posted with its price (bot ankieta … <cena>) — only the headcount is missing.
+      state.pendingRozliczenie = { stage: "people", cost: args.cost, ts: Date.now() };
+      saveState(state);
+      await reply("💰 Koszt sali: " + formatPln(args.cost) + " zł. Ile osób faktycznie grało? Podaj liczbę.");
       return;
     }
     state.pendingRozliczenie = { stage: "cost", ts: Date.now() };
@@ -1189,7 +1202,16 @@ async function handleGroupCommand(text, cfg, mentioned, senderPhone, isFromMe) {
   }
   if (low.startsWith("koszt")) {
     const n = (text.match(/\d+([.,]\d+)?/) || [])[0];
-    if (!n) { await reply("Koszt sali: " + (cfg.hallCost || 160) + " zł.\nAby zmienić (admin): bot koszt sali 160"); return; }
+    if (!n) {
+      // Without this line an admin who just posted a 390 zł game would read "160 zł" here and
+      // reasonably assume the settlement will be wrong.
+      const own = upcomingPolls().filter(p => p.hallCost > 0)
+        .map(p => (DAY_NAMES_PL_ACC[p.gameDay] || p.gameDay) + (p.gameTime ? " " + p.gameTime : "") + ": " + formatPln(p.hallCost) + " zł");
+      await reply("Koszt sali: " + (cfg.hallCost || 160) + " zł." +
+        (own.length ? "\nWłasna cena z ankiety — " + own.join("; ") + "." : "") +
+        "\nAby zmienić (admin): bot koszt sali 160");
+      return;
+    }
     if (await denyIfNotAdmin()) return;
     cfg.hallCost = parseFloat(n.replace(",", "."));
     saveConfig(cfg);
@@ -1204,10 +1226,11 @@ async function handleGroupCommand(text, cfg, mentioned, senderPhone, isFromMe) {
   }
   if (low.startsWith("ankieta") || low.startsWith("pool") || low.startsWith("pula")) {
     if (await denyIfNotAdmin()) return;
-    const { day, time } = parseAnkieta(text);
-    if (!day) { await reply("Podaj dzień, np. \"bot ankieta piątek 20:00\". 🏐"); return; }
-    const name = await createPoll(cfg, day, time, cfg.groupJid);
-    await reply("Gotowe — utworzyłem ankietę: " + name);
+    const { day, time, cost } = parseAnkieta(text);
+    if (!day) { await reply("Podaj dzień, np. \"bot ankieta piątek 20:00\" (z ceną sali: \"bot ankieta sobota 18:00 390\"). 🏐"); return; }
+    const name = await createPoll(cfg, day, time, cfg.groupJid, cost);
+    await reply("Gotowe — utworzyłem ankietę: " + name +
+      (cost ? "\nPrzy rozliczeniu podzielę " + formatPln(cost) + " zł (wystarczy \"bot rozlicz\")." : ""));
     return;
   }
   if (low.startsWith("zmień") || low.startsWith("zmien") || low.startsWith("zmiana")) {
@@ -1303,7 +1326,7 @@ async function handleGroupCommand(text, cfg, mentioned, senderPhone, isFromMe) {
     scheduleReminders(getSock, state, saveState, cfg);
     await reply(r.msg);
   } else if (cmd.action === "help") {
-    await reply("Komendy 🏐\n• bot ankieta piątek 20:00 — nowa ankieta\n• bot status — liczba graczy\n• bot zmień dzień na czwartek / godzinę 21:00\n• bot frekwencja — frekwencja i trend\n• bot rozlicz — podziel koszt sali\n• bot ranking — obecność graczy\n• bot przypomnij — przypomnij teraz\n• bot nie gramy — odwołaj trening\n• bot cofnij odwołanie — przywróć trening");
+    await reply("Komendy 🏐\n• bot ankieta piątek 20:00 [cena] — nowa ankieta\n• bot status — liczba graczy\n• bot zmień dzień na czwartek / godzinę 21:00\n• bot frekwencja — frekwencja i trend\n• bot rozlicz [osoby] — podziel koszt sali (cena z ankiety, jeśli podana)\n• bot ranking — obecność graczy\n• bot przypomnij — przypomnij teraz\n• bot nie gramy — odwołaj trening\n• bot cofnij odwołanie — przywróć trening");
   } else {
     await reply("Nie zrozumiałem 🤔 Spróbuj: \"bot status\", \"bot gramy w czwartek\", \"bot przypomnij\".");
   }
@@ -1331,7 +1354,7 @@ async function handleOwnerCommand(text, cfg) {
     return;
   }
   if (low.startsWith("pomoc") || low.startsWith("help")) {
-    await notify(sock, cfg, "Komendy:\n• ankieta piątek 20:00 — nowa ankieta\n• status — liczba graczy\n• zmień dzień na czwartek / godzinę 21:00\n• frekwencja — frekwencja i trend\n• rozlicz — podziel koszt sali\n• ranking — obecność graczy\n• przypomnij — przypomnij teraz (też przy pełnym składzie)\n• przypominajki — lista nadchodzących przypomnień\n• gramy w czwartek — ustaw dzień\n• pomoc — ta lista\n• nie gramy — odwołaj\n• cofnij odwołanie — przywróć trening\n• test on / test off — grupa testowa");
+    await notify(sock, cfg, "Komendy:\n• ankieta piątek 20:00 [cena] — nowa ankieta\n• status — liczba graczy\n• zmień dzień na czwartek / godzinę 21:00\n• frekwencja — frekwencja i trend\n• rozlicz [kwota] osoby — podziel koszt sali (kwota z ankiety, jeśli podana)\n• ranking — obecność graczy\n• przypomnij — przypomnij teraz (też przy pełnym składzie)\n• przypominajki — lista nadchodzących przypomnień\n• gramy w czwartek — ustaw dzień\n• pomoc — ta lista\n• nie gramy — odwołaj\n• cofnij odwołanie — przywróć trening\n• test on / test off — grupa testowa");
     return;
   }
   // HIDDEN, OWNER-ONLY: manual trigger for the monthly avatar cache (normally runs 1st @ 04:00).
@@ -1387,15 +1410,18 @@ async function handleOwnerCommand(text, cfg) {
     return;
   }
   if (low.startsWith("rozlicz")) {
-    const nums = (text.match(/\d+([.,]\d+)?/g) || []).map(function (x) { return parseFloat(x.replace(",", ".")); });
-    if (nums.length >= 2) {
-      state.pendingRozliczenie = { cost: nums[0], people: Math.round(nums[1]), ts: Date.now() };
+    const pp = primaryPoll();
+    const args = parseRozliczArgs(text, pp && pp.hallCost);
+    if (args.cost && args.people) {
+      state.pendingRozliczenie = { cost: args.cost, people: args.people, ts: Date.now() };
       saveState(state);
       await finalizeRozliczenie(cfg);
       await notify(sock, cfg, "Rozliczenie przetworzone — sprawdź grupę.");
       return;
     }
-    await notify(sock, cfg, "Podaj kwotę i liczbę osób, np. rozlicz 100 10. Pełny dialog działa w grupie: bot rozlicz.");
+    await notify(sock, cfg, "Podaj kwotę i liczbę osób, np. rozlicz 100 10" +
+      (pp && pp.hallCost ? " — albo samą liczbę osób, np. rozlicz 12 (koszt z ankiety: " + formatPln(pp.hallCost) + " zł)" : "") +
+      ". Pełny dialog działa w grupie: bot rozlicz.");
     return;
   }
   if (low.startsWith("ranking")) {
@@ -1408,9 +1434,9 @@ async function handleOwnerCommand(text, cfg) {
     return;
   }
   if (low.startsWith("ankieta") || low.startsWith("pool")) {
-    const { day, time } = parseAnkieta(text);
-    if (!day) { await notify(sock, cfg, "Podaj dzień, np. \"ankieta piątek 20:00\"."); return; }
-    const name = await createPoll(cfg, day, time, cfg.groupJid);
+    const { day, time, cost } = parseAnkieta(text);
+    if (!day) { await notify(sock, cfg, "Podaj dzień, np. \"ankieta piątek 20:00\" (z ceną sali: \"ankieta sobota 18:00 390\")."); return; }
+    const name = await createPoll(cfg, day, time, cfg.groupJid, cost);
     await notify(sock, cfg, "Utworzyłem ankietę w aktywnej grupie: " + name);
     return;
   }
@@ -1450,7 +1476,7 @@ async function handleOwnerCommand(text, cfg) {
     scheduleReminders(getSock, state, saveState, cfg);
     await notify(sock, cfg, r.msg);
   } else if (cmd.action === "help") {
-    await notify(sock, cfg, "Komendy:\n• ankieta piątek 20:00 — nowa ankieta\n• status — liczba graczy\n• zmień dzień na czwartek / godzinę 21:00\n• frekwencja — frekwencja i trend\n• rozlicz — podziel koszt sali\n• ranking — obecność graczy\n• przypomnij — przypomnij teraz\n• gramy w czwartek — ustaw dzień\n• nie gramy — odwołaj\n• cofnij odwołanie — przywróć trening\n• test on / test off — grupa testowa");
+    await notify(sock, cfg, "Komendy:\n• ankieta piątek 20:00 [cena] — nowa ankieta\n• status — liczba graczy\n• zmień dzień na czwartek / godzinę 21:00\n• frekwencja — frekwencja i trend\n• rozlicz [kwota] osoby — podziel koszt sali (kwota z ankiety, jeśli podana)\n• ranking — obecność graczy\n• przypomnij — przypomnij teraz\n• gramy w czwartek — ustaw dzień\n• nie gramy — odwołaj\n• cofnij odwołanie — przywróć trening\n• test on / test off — grupa testowa");
   } else {
     await notify(sock, cfg, "Nie zrozumiałem. Spróbuj: \"status\", \"gramy w czwartek\", \"przypomnij teraz\" albo \"nie gramy\".");
   }
