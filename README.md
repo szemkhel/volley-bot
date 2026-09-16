@@ -58,6 +58,13 @@ link pojawia się też pod odpowiedziami na `bot ranking` / `bot frekwencja` / `
 - Gdy ankieta ma własną cenę (`bot ankieta sobota 18:00 390`), bot nie pyta o koszt:
   `bot rozlicz` zapyta tylko o liczbę osób, a `bot rozlicz 13` rozliczy od razu 390 zł na 13 osób.
   Inną kwotę nadal podasz wprost: `bot rozlicz 400 13`
+- **Którą grę rozlicza bot?** Ostatnią, która **już się odbyła** (minęła jej data, albo jest dziś
+  i minęła godzina startu). Jeśli żadna jeszcze się nie odbyła — najbliższą. Dzięki temu przy
+  dwóch otwartych grach (np. zwykły piątek + dodatkowa sobota) rozliczenie w piątek wieczorem albo
+  w sobotę przed meczem dotyczy piątku, a sobota zostaje nietknięta. Gdy otwarte są dwie gry, bot
+  w wiadomościach o rozliczeniu pisze, o którą chodzi („Rozliczam grę w piątek 20:00”). Jeśli obie
+  gry już się odbyły i żadna nie jest rozliczona, bot bierze **nowszą** — dlatego najlepiej
+  rozliczać każdą grę zaraz po niej
 - `bot koszt sali` — pokazuje zapisany koszt wynajmu (i ceny z ankiet, jeśli jakaś gra ma własną);
   `bot koszt sali 200` ustawia go (admin)
 - Nie musisz używać komend: jeśli ktoś wrzuci na grupę zwykłą wiadomość z podziałem kosztu

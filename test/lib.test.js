@@ -3,7 +3,7 @@ const assert = require("node:assert");
 const os = require("os");
 const fs = require("fs");
 const path = require("path");
-const { attendanceFromTally, weightOfOptions, confirmedPlayers, squadIsFull, reminderSkipAt, parseAnkieta, formatPln, pollName, settlementCost, parseRozliczArgs, nextDateForDay, isAdmin, settlementPeople, matchPoll, parseAbsenceDays, activeInjuryLids, reconnectDelay, healthReport, mergeGameRows, hasBannedVenueWord, votersChoosing, attendanceCounts, pickTopByAttendance, daysUntil,
+const { attendanceFromTally, weightOfOptions, confirmedPlayers, squadIsFull, reminderSkipAt, parseAnkieta, formatPln, pollName, settlementCost, parseRozliczArgs, pickSettlementPoll, nextDateForDay, isAdmin, settlementPeople, matchPoll, parseAbsenceDays, activeInjuryLids, reconnectDelay, healthReport, mergeGameRows, hasBannedVenueWord, votersChoosing, attendanceCounts, pickTopByAttendance, daysUntil,
   parseSettlementShorthand, pollBeatsHistory, looksLikeFullSurname, suggestedInitialName, newAttendeesFromMentions, extraMvpCandidates,
   nextAvatarMeta, topTiedEntries, mvpWinCount, looksLikeOwnerCommand, looksLikeGameResponse,
   authStateSnapshot, authStateDiffEvents } = require("../lib");
@@ -617,4 +617,44 @@ test("reminderSkipAt: reminderSkipAt wins, then optimumPlayers, then 12", () => 
   assert.strictEqual(reminderSkipAt({ optimumPlayers: 14 }), 14);
   assert.strictEqual(reminderSkipAt({}), 12);
   assert.strictEqual(reminderSkipAt({ reminderSkipAt: 0 }), 0);   // explicit opt-out survives
+});
+
+// The week that motivated the fix: the weekly Friday game + an extra, pricier Saturday game.
+const FRI = { gameDay: "friday", gameDate: "2026-09-18", gameTime: "20:00", timestamp: 1 };
+const SAT = { gameDay: "saturday", gameDate: "2026-09-19", gameTime: "18:00", hallCost: 390, timestamp: 2 };
+const at = (date, hhmm) => { const [h, m] = hhmm.split(":").map(Number); return { date, minutes: h * 60 + m }; };
+
+test("pickSettlementPoll: Friday evening settles Friday, not the later Saturday game", () => {
+  // Old rule (latest date) picked SAT here: wrong voters, 390 zł, and SAT archived a day early.
+  assert.strictEqual(pickSettlementPoll([FRI, SAT], at("2026-09-18", "22:00")), FRI);
+});
+
+test("pickSettlementPoll: Saturday before its kick-off still settles Friday", () => {
+  // Saturday's DATE is today, but it hasn't started — the date alone must not make it "played".
+  assert.strictEqual(pickSettlementPoll([FRI, SAT], at("2026-09-19", "10:00")), FRI);
+});
+
+test("pickSettlementPoll: once both have been played, the most recent one", () => {
+  assert.strictEqual(pickSettlementPoll([FRI, SAT], at("2026-09-19", "20:30")), SAT);
+});
+
+test("pickSettlementPoll: nothing played yet → the soonest upcoming game", () => {
+  assert.strictEqual(pickSettlementPoll([SAT, FRI], at("2026-09-17", "12:00")), FRI);
+});
+
+test("pickSettlementPoll: today's game without a start time counts as played", () => {
+  const satNoTime = Object.assign({}, SAT, { gameTime: null });
+  assert.strictEqual(pickSettlementPoll([FRI, satNoTime], at("2026-09-19", "08:00")), satNoTime);
+});
+
+test("pickSettlementPoll: a single open game is returned whatever the clock says", () => {
+  // The ordinary week must behave exactly as before — even settling ahead of the game.
+  assert.strictEqual(pickSettlementPoll([SAT], at("2026-09-15", "09:00")), SAT);
+  assert.strictEqual(pickSettlementPoll([], at("2026-09-15", "09:00")), null);
+});
+
+test("pickSettlementPoll: cancelled games are never picked", () => {
+  const friCancelled = Object.assign({}, FRI, { cancelled: true });
+  assert.strictEqual(pickSettlementPoll([friCancelled, SAT], at("2026-09-18", "22:00")), SAT);
+  assert.strictEqual(pickSettlementPoll([friCancelled], at("2026-09-18", "22:00")), null);
 });

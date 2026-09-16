@@ -7,7 +7,7 @@ const path = require("path");
 const cron = require("node-cron");
 const http = require("http");
 const { notify } = require("./notify");
-const { DAY_WORDS, attendanceFromTally, weightOfOptions, confirmedPlayers, squadIsFull, reminderSkipAt, parseAnkieta, formatPln, pollName, settlementCost, parseRozliczArgs, nextDateForDay, isAdmin, settlementPeople, matchPoll, parseAbsenceDays, activeInjuryLids, reconnectDelay, healthReport, mergeGameRows, attendanceCounts, pickTopByAttendance, daysUntil,
+const { DAY_WORDS, attendanceFromTally, weightOfOptions, confirmedPlayers, squadIsFull, reminderSkipAt, parseAnkieta, formatPln, pollName, settlementCost, parseRozliczArgs, pickSettlementPoll, nextDateForDay, isAdmin, settlementPeople, matchPoll, parseAbsenceDays, activeInjuryLids, reconnectDelay, healthReport, mergeGameRows, attendanceCounts, pickTopByAttendance, daysUntil,
   pollBeatsHistory, looksLikeFullSurname, suggestedInitialName, newAttendeesFromMentions, extraMvpCandidates,
   topTiedEntries, mvpWinCount, looksLikeOwnerCommand, looksLikeGameResponse,
   authStateSnapshot, authStateDiffEvents } = require("./lib");
@@ -174,11 +174,25 @@ function activePolls() { return allPolls().filter(p => !p.cancelled); }         
 function upcomingPolls() { const t = todayWarsaw(); return activePolls().filter(p => !p.gameDate || p.gameDate >= t); } // future/today games
 function pollsForDay(day) { return upcomingPolls().filter(p => p.gameDay === day); }
 function findPoll(day, time) { return matchPoll(activePolls(), day, time); }
-// Settlement / "current" target: most recent active poll (by gameDate/timestamp), else null
-function primaryPoll() {
-  const ps = activePolls();
-  if (!ps.length) return null;
-  return ps.slice().sort((a, b) => (b.gameDate || "").localeCompare(a.gameDate || "") || (b.timestamp || 0) - (a.timestamp || 0))[0];
+// Settlement target: the most recent game that has already started, else the soonest upcoming one
+// (rule and the bug it fixes: lib.pickSettlementPoll). Every caller is part of settlement.
+function primaryPoll() { return pickSettlementPoll(activePolls(), nowWarsaw()); }
+// primaryPoll() depends on the clock, and a settlement dialog stays open for 15-30 min. Pin the
+// game when the dialog opens (pending.pollId), or a game kicking off mid-dialog would switch the
+// target between the bot's question and the answer. A pinned game that has meanwhile disappeared
+// resolves to null (→ history fallback), never silently to a DIFFERENT open game. A pending
+// without the field (opened before this existed) falls back to the live pick.
+function pollIdOf(poll) { return (poll && poll.messageKey && poll.messageKey.id) || null; }
+function pinnedPoll(pending) {
+  if (!pending || !("pollId" in pending)) return primaryPoll();
+  return (pending.pollId && activePolls().find(p => pollIdOf(p) === pending.pollId)) || null;
+}
+// "w sobotę 18:00" — said only when more than one game is open. With a single game the target is
+// obvious, so an ordinary week's messages stay exactly as they were.
+function settlementLabel(poll) {
+  if (!poll || activePolls().length < 2) return "";
+  const { DAY_NAMES_PL_ACC } = require("./reminder");
+  return "w " + (DAY_NAMES_PL_ACC[poll.gameDay] || poll.gameDay) + (poll.gameTime ? " " + poll.gameTime : "");
 }
 function removePoll(poll) { state.polls = allPolls().filter(p => p !== poll); }
 
@@ -455,10 +469,11 @@ function finalizePolls() {
 // Settle a game and close it immediately (rozliczenie = game definitely happened, count known).
 // extraAttendees = people @-mentioned to resolve a headcount drift (lib.newAttendeesFromMentions)
 // — not in the poll at all, so they need to be merged into the archived attendee list explicitly.
-function settleAndClose(people, extraAttendees) {
-  const pp = primaryPoll();
+// poll = the game being settled, chosen by the caller when its dialog opened (see pinnedPoll).
+function settleAndClose(people, extraAttendees, poll) {
+  const pp = poll !== undefined ? poll : primaryPoll();
   if (pp) { pp.realPlayers = people; archivePoll(pp, "played", extraAttendees); removePoll(pp); saveState(state); return; }
-  setRealPlayers(people); // no active poll → history fallback (extraAttendees not applicable)
+  setRealPlayers(people); // no target poll → history fallback (extraAttendees not applicable)
 }
 
 const POLL_OPTIONS = ["Gram", "Nie gram", "Nie wiem", "Gram i przyprowadzam +1", "Gram i przyprowadzam +2"];
@@ -650,7 +665,8 @@ function buildSettlement(cost, realPeople, cfg, poll, memberPhones, extraAttende
     const amount = Math.round(perUnit * 1);
     (groups[amount] = groups[amount] || []).push({ jid: e.jid || (e.phone + "@lid"), phone: e.phone, isMember: isMember });
   }
-  const lines = ["Rozliczenie sali:"];
+  const label = settlementLabel(poll); // computed before settleAndClose removes the poll
+  const lines = ["Rozliczenie sali" + (label ? " (gra " + label + ")" : "") + ":"];
   const mentions = [];
   const amounts = Object.keys(groups).map(Number).sort(function (a, b) { return a - b; });
   for (const amt of amounts) {
@@ -668,13 +684,10 @@ function buildSettlement(cost, realPeople, cfg, poll, memberPhones, extraAttende
   return { text: lines.join(NL), mentions: mentions, accounted: accounted };
 }
 
+// History-only fallback for settleAndClose when there is no target poll. It deliberately does NOT
+// look for an open poll itself: once the target is pinned, "no poll" can mean "the pinned game is
+// gone" while ANOTHER game is still open — writing the headcount onto that one would be wrong.
 function setRealPlayers(n) {
-  const pp = primaryPoll();
-  if (pp) {
-    pp.realPlayers = n;
-    saveState(state);
-    return;
-  }
   const hist = loadHistory();
   const today = new Date().toLocaleDateString("en-CA", { timeZone: "Europe/Warsaw" });
   for (let i = hist.length - 1; i >= 0; i--) {
@@ -690,8 +703,7 @@ function setRealPlayers(n) {
   if (!testMode) syncStatsDb();
 }
 
-function getCurrentPlayerCount() {
-  const pp = primaryPoll();
+function getCurrentPlayerCount(pp) {
   if (pp) return attendanceOf(pp);
   const hist = loadHistory();
   for (let i = hist.length - 1; i >= 0; i--) {
@@ -705,9 +717,12 @@ function getCurrentPlayerCount() {
 
 async function detectSettlement(text, authorPhone, cfg) {
   if (!/\d/.test(text) || !/(z[łl]\b|zlotych|pln|blik)/i.test(text)) return;
-  // Same poll settleAndClose will close. A "po 30 zł" message is turned into a headcount as
-  // cost / per-person, so it MUST use that game's own price when it has one.
-  const hallCost = settlementCost(primaryPoll(), cfg);
+  // Choose the game ONCE: its price, its headcount and the poll that gets closed must all be the
+  // same game. A "po 30 zł" message becomes a headcount as cost / per-person, so it MUST use that
+  // game's own price when it has one.
+  const target = primaryPoll();
+  const label = settlementLabel(target);
+  const hallCost = settlementCost(target, cfg);
   const { extractSettlement } = require("./reminder");
   const info = await extractSettlement(text, hallCost, cfg);
   if (info && info.error) {
@@ -722,18 +737,18 @@ async function detectSettlement(text, authorPhone, cfg) {
   if (!info || !info.isSettlement) return;
   const people = settlementPeople(info, hallCost);
   if (!people || people < 2 || people > 50) return;
-  const current = getCurrentPlayerCount();
-  console.log("[Settlement] detected people=" + people + " current=" + current);
+  const current = getCurrentPlayerCount(target);
+  console.log("[Settlement] detected people=" + people + " current=" + current + (label ? " game=" + label : ""));
   if (current != null && current === people) {
-    settleAndClose(people);
-    await sock.sendMessage(cfg.groupJid, { text: "📊 Zapisuję liczbę graczy z rozliczenia: " + people + " i zamykam grę. 🏐" });
+    settleAndClose(people, undefined, target);
+    await sock.sendMessage(cfg.groupJid, { text: "📊 Zapisuję liczbę graczy z rozliczenia: " + people + " i zamykam grę" + (label ? " " + label : "") + ". 🏐" });
     await notify(sock, cfg, "Rozliczenie wykryte: " + people + " graczy (zgodne z zapisem).");
     await offerMvpPoll(cfg, authorPhone);
     return;
   }
-  state.pendingPlayerUpdate = { detected: people, current: current, authorPhone: authorPhone, ts: Date.now() };
+  state.pendingPlayerUpdate = { detected: people, current: current, authorPhone: authorPhone, pollId: pollIdOf(target), ts: Date.now() };
   saveState(state);
-  await sock.sendMessage(cfg.groupJid, { text: "📊 Z rozliczenia wychodzi " + people + " graczy" + (current != null ? " (u mnie zapisane: " + current + ")" : "") + ". Zaktualizować liczbę graczy na " + people + "? Napisz tak/nie, albo oznacz osoby, które mam dodać do dzisiejszych statystyk (np. @Patryk @Kuba)." });
+  await sock.sendMessage(cfg.groupJid, { text: "📊 Z rozliczenia" + (label ? " za grę " + label : "") + " wychodzi " + people + " graczy" + (current != null ? " (u mnie zapisane: " + current + ")" : "") + ". Zaktualizować liczbę graczy na " + people + "? Napisz tak/nie, albo oznacz osoby, które mam dodać do dzisiejszych statystyk (np. @Patryk @Kuba)." });
 }
 
 // mentionedJids: tagging is an ALTERNATIVE to tak/nie (per the drift question above), so it's
@@ -743,20 +758,21 @@ async function handlePlayerUpdateAnswer(text, senderPhone, isFromMe, cfg, mentio
   if (!p) return false;
   if (Date.now() - (p.ts || 0) > 30 * 60 * 1000) { state.pendingPlayerUpdate = null; saveState(state); return false; }
   const allowed = (senderPhone && senderPhone === p.authorPhone) || isAdmin(senderPhone, isFromMe, cfg.admins || [], (cfg.notifyLid || "").split("@")[0]);
+  const target = pinnedPoll(p); // the game the question was about, not whatever is "current" now
   if (mentionedJids && mentionedJids.length) {
     if (!allowed) return false;
-    const extra = newAttendeesFromMentions(mentionedJids, primaryPoll());
+    const extra = newAttendeesFromMentions(mentionedJids, target);
     state.pendingPlayerUpdate = null; saveState(state);
     if (!extra.length) {
       // Everyone tagged already voted "Gram" — nothing new, same outcome as a plain "tak".
-      settleAndClose(p.detected);
+      settleAndClose(p.detected, undefined, target);
       await sock.sendMessage(cfg.groupJid, { text: "✅ Zaktualizowano liczbę graczy na " + p.detected + " i zamknąłem rozliczenie. 🏐" });
       await notify(sock, cfg, "Liczba graczy zaktualizowana z rozliczenia na " + p.detected + ".");
       await offerMvpPoll(cfg, p.authorPhone);
       return true;
     }
-    const finalPeople = attendanceOf(primaryPoll()) + extra.length;
-    settleAndClose(finalPeople, extra);
+    const finalPeople = attendanceOf(target) + extra.length;
+    settleAndClose(finalPeople, extra, target);
     await sock.sendMessage(cfg.groupJid, { text: "✅ Dopisałem " + extra.length + " os. i zamknąłem rozliczenie na " + finalPeople + " graczy. 🏐", mentions: extra.map(e => e.jid) });
     await notify(sock, cfg, "Liczba graczy zaktualizowana z rozliczenia na " + finalPeople + " (+" + extra.length + " dopisanych).");
     await offerMvpPoll(cfg, p.authorPhone);
@@ -768,7 +784,7 @@ async function handlePlayerUpdateAnswer(text, senderPhone, isFromMe, cfg, mentio
   if (!yes && !no) return false;
   if (!allowed) return false;
   if (yes) {
-    settleAndClose(p.detected);
+    settleAndClose(p.detected, undefined, target);
     state.pendingPlayerUpdate = null; saveState(state);
     await sock.sendMessage(cfg.groupJid, { text: "✅ Zaktualizowano liczbę graczy na " + p.detected + " i zamknąłem rozliczenie. 🏐" });
     await notify(sock, cfg, "Liczba graczy zaktualizowana z rozliczenia na " + p.detected + ".");
@@ -851,9 +867,10 @@ async function currentMemberPhones(cfg) {
 }
 
 async function doSettlement(cfg, cost, people, extraAttendees) {
-  const st = buildSettlement(cost, people, cfg, primaryPoll(), await currentMemberPhones(cfg), extraAttendees);
+  const target = pinnedPoll(state.pendingRozliczenie);
+  const st = buildSettlement(cost, people, cfg, target, await currentMemberPhones(cfg), extraAttendees);
   await sock.sendMessage(cfg.groupJid, { text: st.text, mentions: st.mentions });
-  settleAndClose(people, extraAttendees);
+  settleAndClose(people, extraAttendees, target);
   state.pendingRozliczenie = null;
   saveState(state);
   await notify(sock, cfg, "Rozliczenie wysłane: " + cost + "pln / " + people + " osób." + (extraAttendees && extraAttendees.length ? " (+" + extraAttendees.length + " dopisanych)" : ""));
@@ -864,14 +881,16 @@ async function doSettlement(cfg, cost, people, extraAttendees) {
 async function finalizeRozliczenie(cfg) {
   const p = state.pendingRozliczenie;
   if (!p) return false;
-  const pollPeople = attendanceOf(primaryPoll());
+  const target = pinnedPoll(p);
+  const pollPeople = attendanceOf(target);
   if (p.people === pollPeople) {
     return await doSettlement(cfg, p.cost, p.people);
   }
   p.stage = "confirm";
   p.ts = Date.now();
   saveState(state);
-  await sock.sendMessage(cfg.groupJid, { text: "💰 Liczby się nie zgadzają — ankieta: " + pollPeople + ", podałeś: " + p.people + ". Rozliczyć na " + p.people + " osób? Napisz tak/nie, albo oznacz osoby, które mam dodać do dzisiejszych statystyk (np. @Patryk @Kuba)." });
+  const label = settlementLabel(target);
+  await sock.sendMessage(cfg.groupJid, { text: "💰 Liczby się nie zgadzają" + (label ? " (gra " + label + ")" : "") + " — ankieta: " + pollPeople + ", podałeś: " + p.people + ". Rozliczyć na " + p.people + " osób? Napisz tak/nie, albo oznacz osoby, które mam dodać do dzisiejszych statystyk (np. @Patryk @Kuba)." });
   return true;
 }
 
@@ -897,10 +916,11 @@ async function handleRozliczenieAnswer(rtext, cfg, mentionedJids) {
   }
   if (p.stage === "confirm") {
     if (mentionedJids && mentionedJids.length) {
-      const extra = newAttendeesFromMentions(mentionedJids, primaryPoll());
+      const target = pinnedPoll(p);
+      const extra = newAttendeesFromMentions(mentionedJids, target);
       // Everyone tagged already voted "Gram" — nothing new to add, fall back to the plain count.
       if (!extra.length) return await doSettlement(cfg, p.cost, p.people);
-      const finalPeople = attendanceOf(primaryPoll()) + extra.length;
+      const finalPeople = attendanceOf(target) + extra.length;
       return await doSettlement(cfg, p.cost, finalPeople, extra);
     }
     if (/^(tak|t|ok|yes|potwierdzam)\b/i.test(rtext)) return await doSettlement(cfg, p.cost, p.people);
@@ -1090,7 +1110,7 @@ async function handleGroupCommand(text, cfg, mentioned, senderPhone, isFromMe) {
   }
   const low = text.trim().toLowerCase();
   if (low.startsWith("pomoc") || low.startsWith("help")) {
-    await reply("Komendy 🏐\nDla wszystkich:\n• bot status — liczba graczy\n• bot frekwencja — frekwencja i trend\n• bot ranking — obecność graczy\n• bot statystyki @osoba — statystyki gracza\n• bot kontuzja <czas> — zgłoś dłuższą przerwę (pomijam Cię w przypomnieniach)\n• bot motywacja — motywacja od bota\n• bot kalendarz — jak dodać kalendarz treningów\n• bot zmiany [ile] — co nowego w bocie\n• bot sugestia <treść> — zaproponuj komendę/funkcję\nTylko admini 🛡️:\n• bot ankieta piątek 20:00 [cena] — nowa ankieta (np. sobota 18:00 390 — z ceną sali do rozliczenia)\n• bot zmień dzień/godzinę — zmiana terminu\n• bot mvp [@osoby] — głosowanie MVP (możesz dopisać gości oznaczeniem)\n• bot rozlicz [osoby] — podziel koszt sali (cena z ankiety, jeśli podana)\n• bot koszt sali 160 — ustaw koszt wynajmu\n• bot przypomnij — przypomnij teraz (też przy pełnym składzie)\n• bot przypominajki — lista nadchodzących przypomnień\n• bot nie gramy / cofnij odwołanie\n• bot imie @osoba Imię S. — popraw czyjeś imię w statystykach (bez pełnego nazwiska)");
+    await reply("Komendy 🏐\nDla wszystkich:\n• bot status — liczba graczy\n• bot frekwencja — frekwencja i trend\n• bot ranking — obecność graczy\n• bot statystyki @osoba — statystyki gracza\n• bot kontuzja <czas> — zgłoś dłuższą przerwę (pomijam Cię w przypomnieniach)\n• bot motywacja — motywacja od bota\n• bot kalendarz — jak dodać kalendarz treningów\n• bot zmiany [ile] — co nowego w bocie\n• bot sugestia <treść> — zaproponuj komendę/funkcję\nTylko admini 🛡️:\n• bot ankieta piątek 20:00 [cena] — nowa ankieta (np. sobota 18:00 390 — z ceną sali do rozliczenia)\n• bot zmień dzień/godzinę — zmiana terminu\n• bot mvp [@osoby] — głosowanie MVP (możesz dopisać gości oznaczeniem)\n• bot rozlicz [osoby] — rozlicz ostatnią rozegraną grę (cena z ankiety, jeśli podana)\n• bot koszt sali 160 — ustaw koszt wynajmu\n• bot przypomnij — przypomnij teraz (też przy pełnym składzie)\n• bot przypominajki — lista nadchodzących przypomnień\n• bot nie gramy / cofnij odwołanie\n• bot imie @osoba Imię S. — popraw czyjeś imię w statystykach (bez pełnego nazwiska)");
     return;
   }
   if (low.startsWith("sugestia") || low.startsWith("sugestie") || low.startsWith("propozycja") || low.startsWith("pomysł") || low.startsWith("pomysl")) {
@@ -1151,23 +1171,26 @@ async function handleGroupCommand(text, cfg, mentioned, senderPhone, isFromMe) {
   if (low.startsWith("rozlicz")) {
     if (await denyIfNotAdmin()) return;
     const pp = primaryPoll();
+    const pollId = pollIdOf(pp); // pinned for the whole dialog — see pinnedPoll
+    const label = settlementLabel(pp);
+    const which = label ? "Rozliczam grę " + label + ". " : "";
     const args = parseRozliczArgs(text, pp && pp.hallCost);
     if (args.cost && args.people) {
-      state.pendingRozliczenie = { cost: args.cost, people: args.people, ts: Date.now() };
+      state.pendingRozliczenie = { cost: args.cost, people: args.people, pollId: pollId, ts: Date.now() };
       saveState(state);
       await finalizeRozliczenie(cfg);
       return;
     }
     if (args.cost) {
       // The poll was posted with its price (bot ankieta … <cena>) — only the headcount is missing.
-      state.pendingRozliczenie = { stage: "people", cost: args.cost, ts: Date.now() };
+      state.pendingRozliczenie = { stage: "people", cost: args.cost, pollId: pollId, ts: Date.now() };
       saveState(state);
-      await reply("💰 Koszt sali: " + formatPln(args.cost) + " zł. Ile osób faktycznie grało? Podaj liczbę.");
+      await reply("💰 " + which + "Koszt sali: " + formatPln(args.cost) + " zł. Ile osób faktycznie grało? Podaj liczbę.");
       return;
     }
-    state.pendingRozliczenie = { stage: "cost", ts: Date.now() };
+    state.pendingRozliczenie = { stage: "cost", pollId: pollId, ts: Date.now() };
     saveState(state);
-    await reply("💰 Ile wyniósł wynajem sali? Podaj kwotę w PLN.");
+    await reply("💰 " + which + "Ile wyniósł wynajem sali? Podaj kwotę w PLN.");
     return;
   }
   if (low.startsWith("ranking")) {
@@ -1326,7 +1349,7 @@ async function handleGroupCommand(text, cfg, mentioned, senderPhone, isFromMe) {
     scheduleReminders(getSock, state, saveState, cfg);
     await reply(r.msg);
   } else if (cmd.action === "help") {
-    await reply("Komendy 🏐\n• bot ankieta piątek 20:00 [cena] — nowa ankieta\n• bot status — liczba graczy\n• bot zmień dzień na czwartek / godzinę 21:00\n• bot frekwencja — frekwencja i trend\n• bot rozlicz [osoby] — podziel koszt sali (cena z ankiety, jeśli podana)\n• bot ranking — obecność graczy\n• bot przypomnij — przypomnij teraz\n• bot nie gramy — odwołaj trening\n• bot cofnij odwołanie — przywróć trening");
+    await reply("Komendy 🏐\n• bot ankieta piątek 20:00 [cena] — nowa ankieta\n• bot status — liczba graczy\n• bot zmień dzień na czwartek / godzinę 21:00\n• bot frekwencja — frekwencja i trend\n• bot rozlicz [osoby] — rozlicz ostatnią rozegraną grę (cena z ankiety, jeśli podana)\n• bot ranking — obecność graczy\n• bot przypomnij — przypomnij teraz\n• bot nie gramy — odwołaj trening\n• bot cofnij odwołanie — przywróć trening");
   } else {
     await reply("Nie zrozumiałem 🤔 Spróbuj: \"bot status\", \"bot gramy w czwartek\", \"bot przypomnij\".");
   }
@@ -1354,7 +1377,7 @@ async function handleOwnerCommand(text, cfg) {
     return;
   }
   if (low.startsWith("pomoc") || low.startsWith("help")) {
-    await notify(sock, cfg, "Komendy:\n• ankieta piątek 20:00 [cena] — nowa ankieta\n• status — liczba graczy\n• zmień dzień na czwartek / godzinę 21:00\n• frekwencja — frekwencja i trend\n• rozlicz [kwota] osoby — podziel koszt sali (kwota z ankiety, jeśli podana)\n• ranking — obecność graczy\n• przypomnij — przypomnij teraz (też przy pełnym składzie)\n• przypominajki — lista nadchodzących przypomnień\n• gramy w czwartek — ustaw dzień\n• pomoc — ta lista\n• nie gramy — odwołaj\n• cofnij odwołanie — przywróć trening\n• test on / test off — grupa testowa");
+    await notify(sock, cfg, "Komendy:\n• ankieta piątek 20:00 [cena] — nowa ankieta\n• status — liczba graczy\n• zmień dzień na czwartek / godzinę 21:00\n• frekwencja — frekwencja i trend\n• rozlicz [kwota] osoby — rozlicz ostatnią rozegraną grę (kwota z ankiety, jeśli podana)\n• ranking — obecność graczy\n• przypomnij — przypomnij teraz (też przy pełnym składzie)\n• przypominajki — lista nadchodzących przypomnień\n• gramy w czwartek — ustaw dzień\n• pomoc — ta lista\n• nie gramy — odwołaj\n• cofnij odwołanie — przywróć trening\n• test on / test off — grupa testowa");
     return;
   }
   // HIDDEN, OWNER-ONLY: manual trigger for the monthly avatar cache (normally runs 1st @ 04:00).
@@ -1413,7 +1436,7 @@ async function handleOwnerCommand(text, cfg) {
     const pp = primaryPoll();
     const args = parseRozliczArgs(text, pp && pp.hallCost);
     if (args.cost && args.people) {
-      state.pendingRozliczenie = { cost: args.cost, people: args.people, ts: Date.now() };
+      state.pendingRozliczenie = { cost: args.cost, people: args.people, pollId: pollIdOf(pp), ts: Date.now() };
       saveState(state);
       await finalizeRozliczenie(cfg);
       await notify(sock, cfg, "Rozliczenie przetworzone — sprawdź grupę.");
@@ -1476,7 +1499,7 @@ async function handleOwnerCommand(text, cfg) {
     scheduleReminders(getSock, state, saveState, cfg);
     await notify(sock, cfg, r.msg);
   } else if (cmd.action === "help") {
-    await notify(sock, cfg, "Komendy:\n• ankieta piątek 20:00 [cena] — nowa ankieta\n• status — liczba graczy\n• zmień dzień na czwartek / godzinę 21:00\n• frekwencja — frekwencja i trend\n• rozlicz [kwota] osoby — podziel koszt sali (kwota z ankiety, jeśli podana)\n• ranking — obecność graczy\n• przypomnij — przypomnij teraz\n• gramy w czwartek — ustaw dzień\n• nie gramy — odwołaj\n• cofnij odwołanie — przywróć trening\n• test on / test off — grupa testowa");
+    await notify(sock, cfg, "Komendy:\n• ankieta piątek 20:00 [cena] — nowa ankieta\n• status — liczba graczy\n• zmień dzień na czwartek / godzinę 21:00\n• frekwencja — frekwencja i trend\n• rozlicz [kwota] osoby — rozlicz ostatnią rozegraną grę (kwota z ankiety, jeśli podana)\n• ranking — obecność graczy\n• przypomnij — przypomnij teraz\n• gramy w czwartek — ustaw dzień\n• nie gramy — odwołaj\n• cofnij odwołanie — przywróć trening\n• test on / test off — grupa testowa");
   } else {
     await notify(sock, cfg, "Nie zrozumiałem. Spróbuj: \"status\", \"gramy w czwartek\", \"przypomnij teraz\" albo \"nie gramy\".");
   }
