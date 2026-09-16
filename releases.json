@@ -1,5 +1,13 @@
 [
   {
+    "version": "v1.36",
+    "date": "16 września 2026",
+    "notes": [
+      "Poprawka rozliczeń przy dwóch grach w tygodniu. Bot rozlicza teraz ostatnią grę, która już się odbyła — wcześniej brał tę z najpóźniejszą datą. Przykład: przy zwykłym piątku i dodatkowej sobocie rozliczenie w piątek wieczorem dotyczyło soboty (inni gracze, inna cena, a sobota zamykała się, zanim w ogóle zagraliśmy). Teraz dotyczy piątku, a sobota czeka na swoją kolej.",
+      "Gdy otwarte są dwie gry, bot w wiadomościach o rozliczeniu pisze, o którą chodzi (np. „Rozliczam grę w piątek 20:00”)."
+    ]
+  },
+  {
     "version": "v1.35",
     "date": "16 września 2026",
     "notes": [

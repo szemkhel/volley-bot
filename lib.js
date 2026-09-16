@@ -144,6 +144,31 @@ function parseRozliczArgs(text, pollCost) {
   return { cost: known, people: null };
 }
 
+// Which open game a settlement is about. It used to be simply the open poll with the LATEST date,
+// which goes wrong as soon as two games are open at once: with the weekly Friday game and an extra
+// Saturday game both posted, settling Friday evening split Saturday's price among Saturday's voters
+// and archived Saturday as played — a day before it happened.
+// Rule: the most recent game that has already STARTED (date in the past, or today with its start
+// time passed — today without a time counts as started); if none has, the soonest upcoming one.
+// A single open poll is returned as-is, so an ordinary week behaves exactly as before.
+// now = { date: "YYYY-MM-DD", minutes: H*60+M } in Warsaw time (index.js nowWarsaw()).
+function pickSettlementPoll(polls, now) {
+  const open = (polls || []).filter(p => p && !p.cancelled);
+  if (open.length <= 1) return open[0] || null;
+  const started = p => {
+    if (!p.gameDate || !now || !now.date) return false;
+    if (p.gameDate !== now.date) return p.gameDate < now.date;
+    const m = /^(\d{1,2}):(\d{2})$/.exec(p.gameTime || "");
+    return !m || parseInt(m[1], 10) * 60 + parseInt(m[2], 10) <= now.minutes;
+  };
+  const byDate = (a, b) => (a.gameDate || "").localeCompare(b.gameDate || "") || (a.timestamp || 0) - (b.timestamp || 0);
+  const played = open.filter(started).sort(byDate);
+  if (played.length) return played[played.length - 1];
+  const upcoming = open.filter(p => p.gameDate).sort(byDate);
+  if (upcoming.length) return upcoming[0];
+  return open.slice().sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0))[0];
+}
+
 // Next date (YYYY-MM-DD, Europe/Warsaw) for a weekday name; includes today if it matches.
 // `now` is injectable for testing.
 function nextDateForDay(dayName, now) {
@@ -514,7 +539,7 @@ function authStateDiffEvents(prev, curr) {
   return events;
 }
 
-module.exports = { DAY_WORDS, attendanceFromTally, weightOfOptions, confirmedPlayers, squadIsFull, reminderSkipAt, parseAnkieta, formatPln, pollName, settlementCost, parseRozliczArgs, nextDateForDay, isAdmin, settlementPeople, matchPoll, parseAbsenceDays, activeInjuryLids, reconnectDelay, healthReport, mergeGameRows, hasBannedVenueWord, votersChoosing, attendanceCounts, pickTopByAttendance, daysUntil,
+module.exports = { DAY_WORDS, attendanceFromTally, weightOfOptions, confirmedPlayers, squadIsFull, reminderSkipAt, parseAnkieta, formatPln, pollName, settlementCost, parseRozliczArgs, pickSettlementPoll, nextDateForDay, isAdmin, settlementPeople, matchPoll, parseAbsenceDays, activeInjuryLids, reconnectDelay, healthReport, mergeGameRows, hasBannedVenueWord, votersChoosing, attendanceCounts, pickTopByAttendance, daysUntil,
 parseSettlementShorthand, pollBeatsHistory, looksLikeFullSurname, suggestedInitialName, newAttendeesFromMentions, extraMvpCandidates,
 nextAvatarMeta, topTiedEntries, mvpWinCount, looksLikeOwnerCommand, looksLikeGameResponse,
 authStateSnapshot, authStateDiffEvents };
