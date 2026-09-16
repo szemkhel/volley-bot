@@ -3,7 +3,7 @@ const assert = require("node:assert");
 const os = require("os");
 const fs = require("fs");
 const path = require("path");
-const { attendanceFromTally, weightOfOptions, confirmedPlayers, squadIsFull, reminderSkipAt, parseAnkieta, nextDateForDay, isAdmin, settlementPeople, matchPoll, parseAbsenceDays, activeInjuryLids, reconnectDelay, healthReport, mergeGameRows, hasBannedVenueWord, votersChoosing, attendanceCounts, pickTopByAttendance, daysUntil,
+const { attendanceFromTally, weightOfOptions, confirmedPlayers, squadIsFull, reminderSkipAt, parseAnkieta, formatPln, pollName, settlementCost, parseRozliczArgs, nextDateForDay, isAdmin, settlementPeople, matchPoll, parseAbsenceDays, activeInjuryLids, reconnectDelay, healthReport, mergeGameRows, hasBannedVenueWord, votersChoosing, attendanceCounts, pickTopByAttendance, daysUntil,
   parseSettlementShorthand, pollBeatsHistory, looksLikeFullSurname, suggestedInitialName, newAttendeesFromMentions, extraMvpCandidates,
   nextAvatarMeta, topTiedEntries, mvpWinCount, looksLikeOwnerCommand, looksLikeGameResponse,
   authStateSnapshot, authStateDiffEvents } = require("../lib");
@@ -276,17 +276,81 @@ test("weightOfOptions: single options", () => {
 });
 
 test("parseAnkieta: day + time", () => {
-  assert.deepStrictEqual(parseAnkieta("piątek 20:00"), { day: "friday", time: "20:00" });
-  assert.deepStrictEqual(parseAnkieta("czwartek 21"), { day: "thursday", time: "21:00" });
-  assert.deepStrictEqual(parseAnkieta("środa 19.30"), { day: "wednesday", time: "19:30" });
+  assert.deepStrictEqual(parseAnkieta("piątek 20:00"), { day: "friday", time: "20:00", cost: null });
+  assert.deepStrictEqual(parseAnkieta("czwartek 21"), { day: "thursday", time: "21:00", cost: null });
+  assert.deepStrictEqual(parseAnkieta("środa 19.30"), { day: "wednesday", time: "19:30", cost: null });
 });
 
 test("parseAnkieta: day without time", () => {
-  assert.deepStrictEqual(parseAnkieta("sobota"), { day: "saturday", time: null });
+  assert.deepStrictEqual(parseAnkieta("sobota"), { day: "saturday", time: null, cost: null });
 });
 
 test("parseAnkieta: no day", () => {
-  assert.deepStrictEqual(parseAnkieta("zmień godzinę"), { day: null, time: null });
+  assert.deepStrictEqual(parseAnkieta("zmień godzinę"), { day: null, time: null, cost: null });
+});
+
+test("parseAnkieta: <dzień> <godzina> <cena>", () => {
+  assert.deepStrictEqual(parseAnkieta("ankieta sobota 18:00 390"), { day: "saturday", time: "18:00", cost: 390 });
+  assert.deepStrictEqual(parseAnkieta("ankieta sobota 18 390"), { day: "saturday", time: "18:00", cost: 390 });
+  assert.deepStrictEqual(parseAnkieta("ankieta sobota 390"), { day: "saturday", time: null, cost: 390 });   // 390 is no hour
+  assert.deepStrictEqual(parseAnkieta("ankieta sobota 20:30 90"), { day: "saturday", time: "20:30", cost: 90 });
+});
+
+test("parseAnkieta: price with currency, in any position", () => {
+  assert.deepStrictEqual(parseAnkieta("sobota 18:00 koszt 390 zł"), { day: "saturday", time: "18:00", cost: 390 });
+  assert.deepStrictEqual(parseAnkieta("sobota 18:00 390pln"), { day: "saturday", time: "18:00", cost: 390 });
+  assert.deepStrictEqual(parseAnkieta("sobota 18:00 koszt 390,50 zł"), { day: "saturday", time: "18:00", cost: 390.5 });
+  // A decimal price placed BEFORE the time must not be half-read as a "90.50" kick-off
+  assert.deepStrictEqual(parseAnkieta("sobota 390.50 18:00"), { day: "saturday", time: "18:00", cost: 390.5 });
+});
+
+test("parseAnkieta: only real hours count as a time", () => {
+  // The old `\d{1,2}` read these as 90:00 — now a number that can't be an hour is the price
+  assert.deepStrictEqual(parseAnkieta("sobota 90"), { day: "saturday", time: null, cost: 90 });
+  // An invalid "25:00" must not leak its "00" out as midnight, nor its "25" as a price
+  assert.deepStrictEqual(parseAnkieta("sobota 25:00 390"), { day: "saturday", time: null, cost: 390 });
+  assert.deepStrictEqual(parseAnkieta("sobota 18:00 0"), { day: "saturday", time: "18:00", cost: null });
+});
+
+test("parseAnkieta: other callers (zmień / nie gramy / poll title) never pick up a price", () => {
+  assert.deepStrictEqual(parseAnkieta("zmień dzień na czwartek"), { day: "thursday", time: null, cost: null });
+  assert.deepStrictEqual(parseAnkieta("nie gramy wtorek 20:00"), { day: "tuesday", time: "20:00", cost: null });
+  assert.deepStrictEqual(parseAnkieta("Siatkówka piątek 20:00 🏐 — gracie?"), { day: "friday", time: "20:00", cost: null });
+});
+
+test("formatPln: whole złoty clean, fractions with a Polish comma", () => {
+  assert.strictEqual(formatPln(390), "390");
+  assert.strictEqual(formatPln(390.5), "390,50");
+  assert.strictEqual(formatPln("abc"), "");
+});
+
+test("pollName: price shown only when given; plain title unchanged", () => {
+  assert.strictEqual(pollName("sobotę", "18:00", 390), "Siatkówka sobotę 18:00, koszt 390 zł 🏐 — gracie?");
+  assert.strictEqual(pollName("piątek", "20:00", null), "Siatkówka piątek 20:00 🏐 — gracie?");
+  assert.strictEqual(pollName("piątek", null, 0), "Siatkówka piątek 🏐 — gracie?");
+});
+
+test("settlementCost: the poll's own price wins, then bot koszt sali, then 160", () => {
+  assert.strictEqual(settlementCost({ hallCost: 390 }, { hallCost: 160 }), 390);
+  assert.strictEqual(settlementCost({ hallCost: null }, { hallCost: 180 }), 180);
+  assert.strictEqual(settlementCost(null, {}), 160);
+});
+
+test("parseRozliczArgs: two numbers = cost + people, with or without a poll price", () => {
+  assert.deepStrictEqual(parseRozliczArgs("rozlicz 400 13", 390), { cost: 400, people: 13 });
+  assert.deepStrictEqual(parseRozliczArgs("rozlicz 160 11", null), { cost: 160, people: 11 });
+});
+
+test("parseRozliczArgs: poll price lets you skip the cost", () => {
+  assert.deepStrictEqual(parseRozliczArgs("rozlicz", 390), { cost: 390, people: null });   // dialog asks headcount only
+  assert.deepStrictEqual(parseRozliczArgs("rozlicz 13", 390), { cost: 390, people: 13 });
+  assert.deepStrictEqual(parseRozliczArgs("rozlicz 400", 390), { cost: 400, people: null }); // too big for people → price override
+  assert.deepStrictEqual(parseRozliczArgs("rozlicz 1", 390), { cost: 390, people: null });   // nonsense headcount ignored
+});
+
+test("parseRozliczArgs: without a poll price a lone number is ignored, as before", () => {
+  assert.deepStrictEqual(parseRozliczArgs("rozlicz 13", null), { cost: null, people: null });
+  assert.deepStrictEqual(parseRozliczArgs("rozlicz", undefined), { cost: null, people: null });
 });
 
 test("nextDateForDay: same-week future day", () => {
