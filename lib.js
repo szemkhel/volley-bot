@@ -539,7 +539,28 @@ function authStateDiffEvents(prev, curr) {
   return events;
 }
 
+// Node's fetch reports EVERY network-level failure as the same TypeError("fetch failed") — the real
+// reason (reset, DNS, TLS, "other side closed"…) hides in err.cause. The 2026-09-19 MVP caricature
+// was lost to exactly this and the log said nothing more than "fetch failed", so the cause of the
+// drop could not be diagnosed afterwards. Always log/notify through this.
+function fetchErrorDetail(err) {
+  if (!err) return "unknown error";
+  const c = err.cause;
+  const bits = c ? [c.code, c.message].filter(Boolean) : [];
+  return (err.message || String(err)) + (bits.length ? " (" + bits.join(": ") + ")" : "");
+}
+
+// Worth ONE retry: the connection itself broke — "fetch failed" before any response, or
+// "terminated" while the (multi-MB base64) image body was still streaming in. Deliberately NOT:
+// a timeout (the image may still be rendering on OpenAI's side, so a retry would pay twice for a
+// slow request rather than rescue a broken one) and NOT an HTTP error (OpenAI did answer; repeating
+// the same request just repeats the same answer).
+function isDroppedConnection(err) {
+  if (!err || err.name !== "TypeError") return false;
+  return /fetch failed|terminated/i.test(err.message || "");
+}
+
 module.exports = { DAY_WORDS, attendanceFromTally, weightOfOptions, confirmedPlayers, squadIsFull, reminderSkipAt, parseAnkieta, formatPln, pollName, settlementCost, parseRozliczArgs, pickSettlementPoll, nextDateForDay, isAdmin, settlementPeople, matchPoll, parseAbsenceDays, activeInjuryLids, reconnectDelay, healthReport, mergeGameRows, hasBannedVenueWord, votersChoosing, attendanceCounts, pickTopByAttendance, daysUntil,
 parseSettlementShorthand, pollBeatsHistory, looksLikeFullSurname, suggestedInitialName, newAttendeesFromMentions, extraMvpCandidates,
 nextAvatarMeta, topTiedEntries, mvpWinCount, looksLikeOwnerCommand, looksLikeGameResponse,
-authStateSnapshot, authStateDiffEvents };
+authStateSnapshot, authStateDiffEvents, fetchErrorDetail, isDroppedConnection };

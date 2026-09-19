@@ -10,7 +10,7 @@ const { notify } = require("./notify");
 const { DAY_WORDS, attendanceFromTally, weightOfOptions, confirmedPlayers, squadIsFull, reminderSkipAt, parseAnkieta, formatPln, pollName, settlementCost, parseRozliczArgs, pickSettlementPoll, nextDateForDay, isAdmin, settlementPeople, matchPoll, parseAbsenceDays, activeInjuryLids, reconnectDelay, healthReport, mergeGameRows, attendanceCounts, pickTopByAttendance, daysUntil,
   pollBeatsHistory, looksLikeFullSurname, suggestedInitialName, newAttendeesFromMentions, extraMvpCandidates,
   topTiedEntries, mvpWinCount, looksLikeOwnerCommand, looksLikeGameResponse,
-  authStateSnapshot, authStateDiffEvents } = require("./lib");
+  authStateSnapshot, authStateDiffEvents, fetchErrorDetail } = require("./lib");
 
 const DIR = __dirname;
 const STATE_FILE = path.join(DIR, "state.json");
@@ -375,8 +375,12 @@ async function sendMvpCaricature(cfg, winner, winnerPhone) {
     const img = await generateCaricature(apiKey, referenceFile, guessedGender, haiku);
     await sock.sendMessage(cfg.groupJid, { image: img, caption: BOT_TAG + "\n🏆🎨" });
   } catch (e) {
-    console.error("[MVP Caricature] failed for", winner.name, ":", e.message);
-    await notify(sock, cfg, "⚠️ Nie udało się wygenerować karykatury MVP dla " + winner.name + ": " + e.message);
+    // fetchErrorDetail, not e.message: for a network failure e.message is only "fetch failed".
+    // The DM names the recovery trigger — it's hidden, so it's easy to forget it exists.
+    const why = fetchErrorDetail(e);
+    console.error("[MVP Caricature] failed for", winner.name, ":", why);
+    await notify(sock, cfg, "⚠️ Nie udało się wygenerować karykatury MVP dla " + winner.name + ": " + why +
+      "\nNapisz tu „karykatura”, żeby spróbować ponownie.");
   }
 }
 
