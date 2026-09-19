@@ -6,6 +6,23 @@
 // than one text block into a single gpt-image-1 generation was tested and produced misspellings.
 const fs = require("fs");
 const path = require("path");
+const { isDroppedConnection, fetchErrorDetail } = require("./lib");
+
+// closeMvpPoll runs once per poll, so a failed caricature is simply lost unless the owner notices
+// and sends `karykatura` by hand (2026-09-19: the connection dropped ~60s into the wait and the
+// week's picture never came). One retry covers a dropped connection; `attempt` must build the
+// request from scratch, since a FormData/stream body can't be sent twice.
+const RETRY_DELAY_MS = 5000;
+async function withOneRetry(label, attempt, delayMs) {
+  try {
+    return await attempt();
+  } catch (e) {
+    if (!isDroppedConnection(e)) throw e;
+    console.warn("[MVP Caricature] " + label + ": connection dropped (" + fetchErrorDetail(e) + ") — retrying once");
+    await new Promise(r => setTimeout(r, delayMs == null ? RETRY_DELAY_MS : delayMs));
+    return await attempt();
+  }
+}
 
 // Locked across every generation so caricatures read as "the same artist, different week" —
 // jersey/outfit color is deliberately NOT locked here, it's left to vary freely per generation.
@@ -81,13 +98,14 @@ async function generateCaricature(apiKey, referenceFile, guessedGender, haiku) {
       "volleyball game, " + pose + ". " + STYLE + " Keep the person's recognizable facial " +
       "features: hairstyle and facial hair. " + banner;
     const mediaType = referenceFile.toLowerCase().endsWith(".png") ? "image/png" : "image/jpeg";
-    return await callOpenAiEdit(apiKey, fs.readFileSync(referenceFile), path.basename(referenceFile), mediaType, prompt);
+    const photo = fs.readFileSync(referenceFile);
+    return await withOneRetry("edit", () => callOpenAiEdit(apiKey, photo, path.basename(referenceFile), mediaType, prompt));
   }
   const genderWord = guessedGender === "female" ? "female" : "male";
   const prompt = "A friendly-looking adult " + genderWord + " amateur volleyball player, " +
     "invented features (not based on any real person), captured mid-action during a volleyball " +
     "game, " + pose + ". " + STYLE + " " + banner;
-  return await callOpenAiGenerate(apiKey, prompt);
+  return await withOneRetry("generate", () => callOpenAiGenerate(apiKey, prompt));
 }
 
-module.exports = { generateCaricature, randomPose, POSES, STYLE };
+module.exports = { generateCaricature, withOneRetry, randomPose, POSES, STYLE };

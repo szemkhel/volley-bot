@@ -26,7 +26,7 @@ Auth lives in `auth_info/` on the container — **never delete it**, it would fo
 
 ```bash
 npm run check    # node --check on index/reminder/scheduler/notify/lib
-npm test         # node --test — 101 tests, all must pass (auto-discovers test/; do NOT pass test/ as an arg on Node 22)
+npm test         # node --test — 107 tests, all must pass (auto-discovers test/; do NOT pass test/ as an arg on Node 22)
 ```
 
 Both must be green before pushing. CI (`.github/workflows/ci.yml`, job `test`) runs the same.
@@ -58,8 +58,13 @@ Both must be green before pushing. CI (`.github/workflows/ci.yml`, job `test`) r
   pinned avatar when available, else `/v1/images/generations` with a best-guess gender) in a random
   volleyball action pose, with a Polish haiku (`reminder.js` `generateMvpHaiku`) baked into the
   image. On a genuine vote tie, every tied winner gets their own caricature. Wired into
-  `index.js`'s `closeMvpPoll` via `sendMvpCaricature`, which never blocks the text announcement —
-  failures are caught and reported to the owner via `notify()`.
+  `index.js`'s `closeMvpPoll` via `sendMvpCaricature`, which never blocks the text announcement.
+  A dropped connection is retried once (`withOneRetry`; timeouts and HTTP errors are not);
+  anything else is caught and reported to the owner via `notify()` with the real network cause
+  (`lib.js` `fetchErrorDetail` — bare Node fetch errors say only "fetch failed"). `closeMvpPoll`
+  runs once per poll, so a lost picture is recovered by the hidden self-chat trigger `karykatura`
+  (redraws the latest winner). Covered by `test/mvpCaricature.test.js` against a local server that
+  really drops the connection.
 - `find-group.js`, `create-test-group.js`, `trigger.js` — one-shot helpers.
 - `releases.json` — user-facing changelog in Polish, newest first; feeds `bot zmiany`. Currently **v1.36**.
 
