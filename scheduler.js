@@ -72,7 +72,11 @@ function scheduleReminders(getSock, state, saveState, config) {
   const tz = config.timezone || "Europe/Warsaw";
   const polls = (state.polls || []);
   const days = Array.from(new Set(polls.map(p => p.gameDay)));
-  const getPollForDay = (day) => (state.polls || []).find(p => p.gameDay === day) || null;
+  // `!p.cancelled` matters: the crons are registered per game day and live until the next
+  // scheduleReminders call, so a game cancelled AFTER they were set up would otherwise still get
+  // its reminders — tagging everyone about a game that isn't happening (2026-10-13: the Friday
+  // game was cancelled on Monday, the Tuesday 18:00 cron was still armed for it).
+  const getPollForDay = (day) => (state.polls || []).find(p => p.gameDay === day && !p.cancelled) || null;
   const getExcluded = () => activeInjuryLids(state.injuries, new Date().toLocaleDateString("en-CA", { timeZone: tz }));
 
   const scheduledLabels = [];

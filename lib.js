@@ -144,6 +144,17 @@ function parseRozliczArgs(text, pollCost) {
   return { cost: known, people: null };
 }
 
+// Has the game kicked off yet? Date in the past, or today with its start time passed (today with
+// no time at all counts as started). Used both to pick the game a settlement is about and to refuse
+// to settle one that hasn't happened: a game cannot be paid for before it is played.
+// now = { date: "YYYY-MM-DD", minutes: H*60+M } in Warsaw time (index.js nowWarsaw()).
+function pollHasStarted(poll, now) {
+  if (!poll || !poll.gameDate || !now || !now.date) return false;
+  if (poll.gameDate !== now.date) return poll.gameDate < now.date;
+  const m = /^(\d{1,2}):(\d{2})$/.exec(poll.gameTime || "");
+  return !m || parseInt(m[1], 10) * 60 + parseInt(m[2], 10) <= now.minutes;
+}
+
 // Which open game a settlement is about. It used to be simply the open poll with the LATEST date,
 // which goes wrong as soon as two games are open at once: with the weekly Friday game and an extra
 // Saturday game both posted, settling Friday evening split Saturday's price among Saturday's voters
@@ -155,12 +166,7 @@ function parseRozliczArgs(text, pollCost) {
 function pickSettlementPoll(polls, now) {
   const open = (polls || []).filter(p => p && !p.cancelled);
   if (open.length <= 1) return open[0] || null;
-  const started = p => {
-    if (!p.gameDate || !now || !now.date) return false;
-    if (p.gameDate !== now.date) return p.gameDate < now.date;
-    const m = /^(\d{1,2}):(\d{2})$/.exec(p.gameTime || "");
-    return !m || parseInt(m[1], 10) * 60 + parseInt(m[2], 10) <= now.minutes;
-  };
+  const started = p => pollHasStarted(p, now);
   const byDate = (a, b) => (a.gameDate || "").localeCompare(b.gameDate || "") || (a.timestamp || 0) - (b.timestamp || 0);
   const played = open.filter(started).sort(byDate);
   if (played.length) return played[played.length - 1];
@@ -560,7 +566,7 @@ function isDroppedConnection(err) {
   return /fetch failed|terminated/i.test(err.message || "");
 }
 
-module.exports = { DAY_WORDS, attendanceFromTally, weightOfOptions, confirmedPlayers, squadIsFull, reminderSkipAt, parseAnkieta, formatPln, pollName, settlementCost, parseRozliczArgs, pickSettlementPoll, nextDateForDay, isAdmin, settlementPeople, matchPoll, parseAbsenceDays, activeInjuryLids, reconnectDelay, healthReport, mergeGameRows, hasBannedVenueWord, votersChoosing, attendanceCounts, pickTopByAttendance, daysUntil,
+module.exports = { DAY_WORDS, attendanceFromTally, weightOfOptions, confirmedPlayers, squadIsFull, reminderSkipAt, parseAnkieta, formatPln, pollName, settlementCost, parseRozliczArgs, pickSettlementPoll, pollHasStarted, nextDateForDay, isAdmin, settlementPeople, matchPoll, parseAbsenceDays, activeInjuryLids, reconnectDelay, healthReport, mergeGameRows, hasBannedVenueWord, votersChoosing, attendanceCounts, pickTopByAttendance, daysUntil,
 parseSettlementShorthand, pollBeatsHistory, looksLikeFullSurname, suggestedInitialName, newAttendeesFromMentions, extraMvpCandidates,
 nextAvatarMeta, topTiedEntries, mvpWinCount, looksLikeOwnerCommand, looksLikeGameResponse,
 authStateSnapshot, authStateDiffEvents, fetchErrorDetail, isDroppedConnection };
