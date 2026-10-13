@@ -7,7 +7,7 @@ const path = require("path");
 const cron = require("node-cron");
 const http = require("http");
 const { notify } = require("./notify");
-const { DAY_WORDS, attendanceFromTally, weightOfOptions, confirmedPlayers, squadIsFull, reminderSkipAt, parseAnkieta, formatPln, pollName, settlementCost, parseRozliczArgs, pickSettlementPoll, nextDateForDay, isAdmin, settlementPeople, matchPoll, parseAbsenceDays, activeInjuryLids, reconnectDelay, healthReport, mergeGameRows, attendanceCounts, pickTopByAttendance, daysUntil,
+const { DAY_WORDS, attendanceFromTally, weightOfOptions, confirmedPlayers, squadIsFull, reminderSkipAt, parseAnkieta, formatPln, pollName, settlementCost, parseRozliczArgs, pickSettlementPoll, pollHasStarted, nextDateForDay, isAdmin, settlementPeople, matchPoll, parseAbsenceDays, activeInjuryLids, reconnectDelay, healthReport, mergeGameRows, attendanceCounts, pickTopByAttendance, daysUntil,
   pollBeatsHistory, looksLikeFullSurname, suggestedInitialName, newAttendeesFromMentions, extraMvpCandidates,
   topTiedEntries, mvpWinCount, looksLikeOwnerCommand, looksLikeGameResponse,
   authStateSnapshot, authStateDiffEvents, fetchErrorDetail } = require("./lib");
@@ -725,6 +725,15 @@ async function detectSettlement(text, authorPhone, cfg) {
   // same game. A "po 30 zł" message becomes a headcount as cost / per-person, so it MUST use that
   // game's own price when it has one.
   const target = primaryPoll();
+  // A game that hasn't been played yet cannot be settled, so any number+"zł" in the chat before
+  // kick-off is talk about money, not a settlement. Without this gate the group's 2026-10-12
+  // discussion of hall rates ("80zl za godzinę", with 200 zł as the hall cost → 200/80 = 3 players)
+  // matched the 3 "Gram" votes exactly and silently archived Thursday's game two days early,
+  // taking its poll — and every vote still to come — with it.
+  if (target && !pollHasStarted(target, nowWarsaw())) {
+    console.log("[Settlement] ignored — nearest game" + (target.gameDate ? " (" + target.gameDate + ")" : "") + " hasn't been played yet");
+    return;
+  }
   const label = settlementLabel(target);
   const hallCost = settlementCost(target, cfg);
   const { extractSettlement } = require("./reminder");

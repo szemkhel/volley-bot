@@ -3,7 +3,7 @@ const assert = require("node:assert");
 const os = require("os");
 const fs = require("fs");
 const path = require("path");
-const { attendanceFromTally, weightOfOptions, confirmedPlayers, squadIsFull, reminderSkipAt, parseAnkieta, formatPln, pollName, settlementCost, parseRozliczArgs, pickSettlementPoll, nextDateForDay, isAdmin, settlementPeople, matchPoll, parseAbsenceDays, activeInjuryLids, reconnectDelay, healthReport, mergeGameRows, hasBannedVenueWord, votersChoosing, attendanceCounts, pickTopByAttendance, daysUntil,
+const { attendanceFromTally, weightOfOptions, confirmedPlayers, squadIsFull, reminderSkipAt, parseAnkieta, formatPln, pollName, settlementCost, parseRozliczArgs, pickSettlementPoll, pollHasStarted, nextDateForDay, isAdmin, settlementPeople, matchPoll, parseAbsenceDays, activeInjuryLids, reconnectDelay, healthReport, mergeGameRows, hasBannedVenueWord, votersChoosing, attendanceCounts, pickTopByAttendance, daysUntil,
   parseSettlementShorthand, pollBeatsHistory, looksLikeFullSurname, suggestedInitialName, newAttendeesFromMentions, extraMvpCandidates,
   nextAvatarMeta, topTiedEntries, mvpWinCount, looksLikeOwnerCommand, looksLikeGameResponse,
   authStateSnapshot, authStateDiffEvents } = require("../lib");
@@ -648,9 +648,40 @@ test("pickSettlementPoll: today's game without a start time counts as played", (
 });
 
 test("pickSettlementPoll: a single open game is returned whatever the clock says", () => {
-  // The ordinary week must behave exactly as before — even settling ahead of the game.
+  // The ordinary week must behave exactly as before. It still answers "which game" ahead of
+  // kick-off — whether settling that early is allowed at all is pollHasStarted's call.
   assert.strictEqual(pickSettlementPoll([SAT], at("2026-09-15", "09:00")), SAT);
   assert.strictEqual(pickSettlementPoll([], at("2026-09-15", "09:00")), null);
+});
+
+test("pollHasStarted: past date yes, future date no", () => {
+  assert.strictEqual(pollHasStarted(FRI, at("2026-09-19", "10:00")), true);
+  assert.strictEqual(pollHasStarted(SAT, at("2026-09-18", "23:00")), false);
+});
+
+test("pollHasStarted: on the day, the start time decides", () => {
+  assert.strictEqual(pollHasStarted(SAT, at("2026-09-19", "17:59")), false);
+  assert.strictEqual(pollHasStarted(SAT, at("2026-09-19", "18:00")), true);  // kick-off counts
+  assert.strictEqual(pollHasStarted(SAT, at("2026-09-19", "22:30")), true);
+});
+
+test("pollHasStarted: today with no start time counts as started", () => {
+  assert.strictEqual(pollHasStarted({ gameDate: "2026-09-19" }, at("2026-09-19", "00:30")), true);
+});
+
+test("pollHasStarted: the 2026-10-12 incident — a game 3 days out is not settleable", () => {
+  // Hall rates were being discussed on Monday ("80zl za godzinę"); 200 zł / 80 = 3 matched the 3
+  // "Gram" votes and the bot archived Thursday's game, deleting the poll people were still voting in.
+  const thu = { gameDay: "thursday", gameDate: "2026-10-15", gameTime: "20:00", timestamp: 1 };
+  assert.strictEqual(pollHasStarted(thu, at("2026-10-12", "15:24")), false);
+  assert.strictEqual(pollHasStarted(thu, at("2026-10-15", "22:10")), true);  // after the game: fine
+});
+
+test("pollHasStarted: missing poll, date or clock is never 'started'", () => {
+  assert.strictEqual(pollHasStarted(null, at("2026-09-19", "10:00")), false);
+  assert.strictEqual(pollHasStarted({ gameTime: "20:00" }, at("2026-09-19", "10:00")), false);
+  assert.strictEqual(pollHasStarted(FRI, null), false);
+  assert.strictEqual(pollHasStarted(FRI, {}), false);
 });
 
 test("pickSettlementPoll: cancelled games are never picked", () => {

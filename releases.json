@@ -1,5 +1,13 @@
 [
   {
+    "version": "v1.37",
+    "date": "13 października 2026",
+    "notes": [
+      "Bot nie rozlicza już gry, która się jeszcze nie odbyła. Poniedziałkowa rozmowa o cenach hali („80zl za godzinę”) została wzięta za rozliczenie: wyszło z niej 3 graczy, tyle samo było wtedy głosów „Gram”, więc bot uznał czwartkową grę za zagraną i zamknął ankietę dwa dni przed terminem. Teraz liczby i „zł” w czacie przed grą to po prostu rozmowa o pieniądzach. Komenda „bot rozlicz” działa bez zmian.",
+      "Przypomnienia nie wychodzą już dla odwołanej gry. Jeśli gra została odwołana po utworzeniu ankiety, bot i tak oznaczał wszystkich o zaplanowanej godzinie przypomnienia."
+    ]
+  },
+  {
     "version": "v1.36",
     "date": "16 września 2026",
     "notes": [

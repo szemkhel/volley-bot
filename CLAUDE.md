@@ -26,7 +26,7 @@ Auth lives in `auth_info/` on the container — **never delete it**, it would fo
 
 ```bash
 npm run check    # node --check on index/reminder/scheduler/notify/lib
-npm test         # node --test — 107 tests, all must pass (auto-discovers test/; do NOT pass test/ as an arg on Node 22)
+npm test         # node --test — 112 tests, all must pass (auto-discovers test/; do NOT pass test/ as an arg on Node 22)
 ```
 
 Both must be green before pushing. CI (`.github/workflows/ci.yml`, job `test`) runs the same.
@@ -66,7 +66,7 @@ Both must be green before pushing. CI (`.github/workflows/ci.yml`, job `test`) r
   (redraws the latest winner). Covered by `test/mvpCaricature.test.js` against a local server that
   really drops the connection.
 - `find-group.js`, `create-test-group.js`, `trigger.js` — one-shot helpers.
-- `releases.json` — user-facing changelog in Polish, newest first; feeds `bot zmiany`. Currently **v1.36**.
+- `releases.json` — user-facing changelog in Polish, newest first; feeds `bot zmiany`. Currently **v1.37**.
 
 Data files (`state.json`, `history.json`, `contacts.json`, `mvp.json`, `weeklog.json`,
 `suggestions.json`, `config.json`, `.env`, `auth_info/`) are **gitignored and live only on the
