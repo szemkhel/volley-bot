@@ -9,7 +9,7 @@
     { "daysBefore": 3, "time": "18:00", "urgent": true }
   ],
   "rollCall": { "daysBefore": 2, "time": "08:00" },
-  "minPlayers": 6,
+  "minPlayers": 8,
   "notifyJid": "NUMBER@s.whatsapp.net",
   "notifyLid": "LID@lid",
   "blikNumber": "+48 000 000 000",

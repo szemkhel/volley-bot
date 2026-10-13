@@ -5,7 +5,7 @@
     "notes": [
       "Nowy rytm przypomnień, pod ustalony deadline: poniedziałek 18:00, wtorek 10:00 i wtorek 18:00. W środę bot już nie przypomina — wtedy decyzja jest podjęta. Wcześniej ostatnie przypomnienie wychodziło w środę po południu, czyli po terminie.",
       "Każde przypomnienie i tytuł ankiety mówią, do kiedy można głosować („głosy do wtorku”). Ostatnie wołanie we wtorek wieczorem dalej dopytuje osoby z „Nie wiem”.",
-      "Zamknięcie ankiety w środę o 08:00: bot podaje ostateczną listę zapisanych i koszt na osobę. Jeśli zapisanych jest mniej niż 6, oznacza adminów — halę trzeba odwołać tego ranka, póki jest to bezpłatne.",
+      "Zamknięcie ankiety w środę o 08:00: bot podaje ostateczną listę zapisanych i koszt na osobę. Jeśli zapisanych jest mniej niż 8, oznacza adminów — halę trzeba odwołać tego ranka, póki jest to bezpłatne.",
       "„bot przypominajki” pokazuje teraz wszystkie trzy terminy i godzinę zamknięcia ankiety."
     ]
   },

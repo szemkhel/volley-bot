@@ -748,16 +748,17 @@ test("rollCallSlot: Wednesday 08:00 for a Friday game, and switchable off", () =
 });
 
 test("rollCallMessage: enough players → we play, with the per-head cost", () => {
-  const m = rollCallMessage({ dayPl: "piątek", time: "20:00", confirmed: 11, minPlayers: 6, cost: 160, names: ["Marek", "Kuba"] });
+  const m = rollCallMessage({ dayPl: "piątek", time: "20:00", confirmed: 11, minPlayers: 8, cost: 160, names: ["Marek", "Kuba"] });
   assert.strictEqual(m.needsCancel, false);
   assert.match(m.text, /Gramy 🏐 — 11 zapisanych, ok\. 15 zł od osoby\./);
   assert.match(m.text, /Zapisani: Marek, Kuba\./);
 });
 
 test("rollCallMessage: below the minimum → cancel today, and tag whoever can do it", () => {
-  const m = rollCallMessage({ dayPl: "piątek", time: "20:00", confirmed: 4, minPlayers: 6, cost: 160, names: ["Marek"], callout: "@7584962621670" });
+  // 8 is the group's minimum as of 2026-10-13 (4v4); 7 confirmed is a cancel.
+  const m = rollCallMessage({ dayPl: "piątek", time: "20:00", confirmed: 7, minPlayers: 8, cost: 160, names: ["Marek"], callout: "@7584962621670" });
   assert.strictEqual(m.needsCancel, true);
-  assert.match(m.text, /Tylko 4 zapisanych \(minimum 6\)\./);
+  assert.match(m.text, /Tylko 7 zapisanych \(minimum 8\)\./);
   assert.match(m.text, /@7584962621670 — decyzja o odwołaniu hali musi paść dziś rano/);
 });
 
