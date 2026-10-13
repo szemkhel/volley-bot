@@ -26,7 +26,7 @@ Auth lives in `auth_info/` on the container — **never delete it**, it would fo
 
 ```bash
 npm run check    # node --check on index/reminder/scheduler/notify/lib
-npm test         # node --test — 112 tests, all must pass (auto-discovers test/; do NOT pass test/ as an arg on Node 22)
+npm test         # node --test — 124 tests, all must pass (auto-discovers test/; do NOT pass test/ as an arg on Node 22)
 ```
 
 Both must be green before pushing. CI (`.github/workflows/ci.yml`, job `test`) runs the same.
@@ -37,7 +37,12 @@ Both must be green before pushing. CI (`.github/workflows/ci.yml`, job `test`) r
 - `reminder.js` — all Anthropic calls. `CREATIVE_MODEL = "claude-sonnet-4-6"` for Polish prose
   (reminders, motivation, MVP congrats — Haiku produced poor Polish); `CLASSIFY_MODEL =
   "claude-haiku-4-5-20251001"` for classification (day detection, response analysis, command intent).
-- `scheduler.js` — per-game cron reminder pairs.
+- `scheduler.js` — per-game cron reminders. Slots are **derived**, not hand-written: `lib.js`
+  `reminderSlots`/`rollCallSlot` turn "N days before the game at HH:MM" into cron lines, so one
+  definition covers every game day (default: game−4 18:00, game−3 10:00, game−3 18:00 = last call,
+  plus the roll call at game−2 08:00). Override via `reminderSlots`/`rollCall` in `config.json`.
+  The roll call (`fireRollCall`) posts the final list + per-head cost and tags `cfg.admins` only
+  when turnout is below `minPlayers` — the morning the hall can still be cancelled free.
 - `lib.js` — pure helpers, **this is what the tests cover**. Put testable logic here.
 - `db.js` — best-effort Postgres mirror; no-op when `DATABASE_URL` is unset. Also holds the
   `ai_text_pool` table helpers (`drawPooledText`/`refillPool`) used by `textPool.js`.
@@ -66,7 +71,7 @@ Both must be green before pushing. CI (`.github/workflows/ci.yml`, job `test`) r
   (redraws the latest winner). Covered by `test/mvpCaricature.test.js` against a local server that
   really drops the connection.
 - `find-group.js`, `create-test-group.js`, `trigger.js` — one-shot helpers.
-- `releases.json` — user-facing changelog in Polish, newest first; feeds `bot zmiany`. Currently **v1.37**.
+- `releases.json` — user-facing changelog in Polish, newest first; feeds `bot zmiany`. Currently **v1.38**.
 
 Data files (`state.json`, `history.json`, `contacts.json`, `mvp.json`, `weeklog.json`,
 `suggestions.json`, `config.json`, `.env`, `auth_info/`) are **gitignored and live only on the

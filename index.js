@@ -7,7 +7,8 @@ const path = require("path");
 const cron = require("node-cron");
 const http = require("http");
 const { notify } = require("./notify");
-const { DAY_WORDS, attendanceFromTally, weightOfOptions, confirmedPlayers, squadIsFull, reminderSkipAt, parseAnkieta, formatPln, pollName, settlementCost, parseRozliczArgs, pickSettlementPoll, pollHasStarted, nextDateForDay, isAdmin, settlementPeople, matchPoll, parseAbsenceDays, activeInjuryLids, reconnectDelay, healthReport, mergeGameRows, attendanceCounts, pickTopByAttendance, daysUntil,
+const { DAY_WORDS, attendanceFromTally, weightOfOptions, confirmedPlayers, squadIsFull, reminderSkipAt, parseAnkieta, formatPln, pollName, settlementCost, parseRozliczArgs, pickSettlementPoll, pollHasStarted, nextDateForDay, isAdmin,
+  reminderSlots, rollCallSlot, votingDeadline, lastCallDays, settlementPeople, matchPoll, parseAbsenceDays, activeInjuryLids, reconnectDelay, healthReport, mergeGameRows, attendanceCounts, pickTopByAttendance, daysUntil,
   pollBeatsHistory, looksLikeFullSurname, suggestedInitialName, newAttendeesFromMentions, extraMvpCandidates,
   topTiedEntries, mvpWinCount, looksLikeOwnerCommand, looksLikeGameResponse,
   authStateSnapshot, authStateDiffEvents, fetchErrorDetail } = require("./lib");
@@ -199,10 +200,9 @@ function removePoll(poll) { state.polls = allPolls().filter(p => p !== poll); }
 // A MANUAL `bot przypomnij` this close to the game is a last call, so it should behave like the
 // scheduled urgent run — i.e. also chase the "Nie wiem" voters, since there's barely time left to
 // cancel the hall. Earlier in the week it stays a gentle nudge.
-const LAST_CALL_DAYS = 2;
-function isLastCall(poll) {
+function isLastCall(poll, cfg) {
   const d = daysUntil(poll && poll.gameDate, todayWarsaw());
-  return d != null && d <= LAST_CALL_DAYS;
+  return d != null && d <= lastCallDays(cfg);
 }
 
 const processedCmds = new Set();
@@ -604,7 +604,8 @@ async function createPoll(cfg, day, time, targetJid, cost) {
   const { scheduleReminders } = require("./scheduler");
   const gday = day || state.gameDay || "friday";
   const dayPl = DAY_NAMES_PL_ACC[gday] || gday || "";
-  const name = pollName(dayPl, time, cost);
+  const deadline = votingDeadline(gday, cfg);
+  const name = pollName(dayPl, time, cost, deadline && deadline.dayGen);
   const sent = await sock.sendMessage(targetJid, { poll: { name, values: POLL_OPTIONS, selectableCount: 1 } });
 
   // Replace any existing tracked poll for the SAME day (re-post, incl. disabled); leave other days intact
@@ -1055,11 +1056,12 @@ function doUndo() {
 }
 
 // Admin "przypomniajki": list still-upcoming reminders for this week's active games.
-// Reminder times mirror the scheduler: first = game day −3 @ 18:00, urgent = game day −2 @ 17:00.
+// Slots come from the same lib helpers the scheduler uses, so this can't drift out of sync with
+// what will actually fire.
 function przypomniajkiText() {
   const { DAY_NAMES_PL } = require("./reminder");
-  const { DAY_SCHEDULES } = require("./scheduler");
-  const threshold = reminderSkipAt(loadConfig());
+  const cfg = loadConfig();
+  const threshold = reminderSkipAt(cfg);
   const cap = s => s ? s.charAt(0).toUpperCase() + s.slice(1) : s;
   const addDays = (ymd, delta) => { const d = new Date(ymd + "T12:00:00Z"); d.setUTCDate(d.getUTCDate() + delta); return d.toISOString().slice(0, 10); };
   const now = nowWarsaw();
@@ -1068,11 +1070,17 @@ function przypomniajkiText() {
   const polls = upcomingPolls().slice().sort((a, b) => (a.gameDate || "").localeCompare(b.gameDate || ""));
   const blocks = [];
   for (const poll of polls) {
-    const sched = DAY_SCHEDULES[poll.gameDay];
-    if (!sched || !poll.gameDate) continue;
+    if (!poll.gameDate) continue;
+    const minutesOf = (hhmm) => { const m = /^(\d{1,2}):(\d{2})$/.exec(hhmm || ""); return m ? parseInt(m[1], 10) * 60 + parseInt(m[2], 10) : 0; };
     const lines = [];
-    if (isUpcoming(addDays(poll.gameDate, -3), 18 * 60)) lines.push("   • pierwsze: " + sched.labels[0]);
-    if (isUpcoming(addDays(poll.gameDate, -2), 17 * 60)) lines.push("   • pilne: " + sched.labels[1]);
+    for (const slot of reminderSlots(poll.gameDay, cfg)) {
+      if (!isUpcoming(addDays(poll.gameDate, -slot.daysBefore), minutesOf(slot.time))) continue;
+      lines.push("   • " + (slot.urgent ? "ostatnie wołanie" : "przypomnienie") + ": " + slot.label);
+    }
+    const rc = rollCallSlot(poll.gameDay, cfg);
+    if (rc && isUpcoming(addDays(poll.gameDate, -rc.daysBefore), minutesOf(rc.time))) {
+      lines.push("   • zamknięcie ankiety: " + rc.label);
+    }
     if (!lines.length) continue;
     // The scheduler re-checks the headcount when it fires, so this is a forecast, not a promise:
     // one drop-out before that moment brings the reminder back.
@@ -1123,7 +1131,7 @@ async function handleGroupCommand(text, cfg, mentioned, senderPhone, isFromMe) {
   }
   const low = text.trim().toLowerCase();
   if (low.startsWith("pomoc") || low.startsWith("help")) {
-    await reply("Komendy 🏐\nDla wszystkich:\n• bot status — liczba graczy\n• bot frekwencja — frekwencja i trend\n• bot ranking — obecność graczy\n• bot statystyki @osoba — statystyki gracza\n• bot kontuzja <czas> — zgłoś dłuższą przerwę (pomijam Cię w przypomnieniach)\n• bot motywacja — motywacja od bota\n• bot kalendarz — jak dodać kalendarz treningów\n• bot zmiany [ile] — co nowego w bocie\n• bot sugestia <treść> — zaproponuj komendę/funkcję\nTylko admini 🛡️:\n• bot ankieta piątek 20:00 [cena] — nowa ankieta (np. sobota 18:00 390 — z ceną sali do rozliczenia)\n• bot zmień dzień/godzinę — zmiana terminu\n• bot mvp [@osoby] — głosowanie MVP (możesz dopisać gości oznaczeniem)\n• bot rozlicz [osoby] — rozlicz ostatnią rozegraną grę (cena z ankiety, jeśli podana)\n• bot koszt sali 160 — ustaw koszt wynajmu\n• bot przypomnij — przypomnij teraz (też przy pełnym składzie)\n• bot przypominajki — lista nadchodzących przypomnień\n• bot nie gramy / cofnij odwołanie\n• bot imie @osoba Imię S. — popraw czyjeś imię w statystykach (bez pełnego nazwiska)");
+    await reply("Komendy 🏐\nDla wszystkich:\n• bot status — liczba graczy\n• bot frekwencja — frekwencja i trend\n• bot ranking — obecność graczy\n• bot statystyki @osoba — statystyki gracza\n• bot kontuzja <czas> — zgłoś dłuższą przerwę (pomijam Cię w przypomnieniach)\n• bot motywacja — motywacja od bota\n• bot kalendarz — jak dodać kalendarz treningów\n• bot zmiany [ile] — co nowego w bocie\n• bot sugestia <treść> — zaproponuj komendę/funkcję\nTylko admini 🛡️:\n• bot ankieta piątek 20:00 [cena] — nowa ankieta (np. sobota 18:00 390 — z ceną sali do rozliczenia)\n• bot zmień dzień/godzinę — zmiana terminu\n• bot mvp [@osoby] — głosowanie MVP (możesz dopisać gości oznaczeniem)\n• bot rozlicz [osoby] — rozlicz ostatnią rozegraną grę (cena z ankiety, jeśli podana)\n• bot koszt sali 160 — ustaw koszt wynajmu\n• bot przypomnij — przypomnij teraz (też przy pełnym składzie)\n• bot przypominajki — nadchodzące przypomnienia i zamknięcie ankiety\n• bot nie gramy / cofnij odwołanie\n• bot imie @osoba Imię S. — popraw czyjeś imię w statystykach (bez pełnego nazwiska)");
     return;
   }
   if (low.startsWith("sugestia") || low.startsWith("sugestie") || low.startsWith("propozycja") || low.startsWith("pomysł") || low.startsWith("pomysl")) {
@@ -1353,7 +1361,7 @@ async function handleGroupCommand(text, cfg, mentioned, senderPhone, isFromMe) {
   } else if (cmd.action === "remind") {
     let total = 0;
     const injured = activeInjuryLids(state.injuries, todayWarsaw());
-    for (const poll of activePolls()) { const r = await sendReminder(sock, poll, cfg, isLastCall(poll), injured); if (r && r.count) total += r.count; }
+    for (const poll of activePolls()) { const r = await sendReminder(sock, poll, cfg, isLastCall(poll, cfg), injured); if (r && r.count) total += r.count; }
     if (!activePolls().length) await reply("Nie mogę teraz przypomnieć (brak aktywnej ankiety). 🏐");
     else if (total === 0) await reply("Wszyscy już zagłosowali! 🎉");
     else await notify(sock, cfg, "Komenda z grupy: przypomnij -> " + total);
@@ -1390,7 +1398,7 @@ async function handleOwnerCommand(text, cfg) {
     return;
   }
   if (low.startsWith("pomoc") || low.startsWith("help")) {
-    await notify(sock, cfg, "Komendy:\n• ankieta piątek 20:00 [cena] — nowa ankieta\n• status — liczba graczy\n• zmień dzień na czwartek / godzinę 21:00\n• frekwencja — frekwencja i trend\n• rozlicz [kwota] osoby — rozlicz ostatnią rozegraną grę (kwota z ankiety, jeśli podana)\n• ranking — obecność graczy\n• przypomnij — przypomnij teraz (też przy pełnym składzie)\n• przypominajki — lista nadchodzących przypomnień\n• gramy w czwartek — ustaw dzień\n• pomoc — ta lista\n• nie gramy — odwołaj\n• cofnij odwołanie — przywróć trening\n• test on / test off — grupa testowa");
+    await notify(sock, cfg, "Komendy:\n• ankieta piątek 20:00 [cena] — nowa ankieta\n• status — liczba graczy\n• zmień dzień na czwartek / godzinę 21:00\n• frekwencja — frekwencja i trend\n• rozlicz [kwota] osoby — rozlicz ostatnią rozegraną grę (kwota z ankiety, jeśli podana)\n• ranking — obecność graczy\n• przypomnij — przypomnij teraz (też przy pełnym składzie)\n• przypominajki — nadchodzące przypomnienia i zamknięcie ankiety\n• gramy w czwartek — ustaw dzień\n• pomoc — ta lista\n• nie gramy — odwołaj\n• cofnij odwołanie — przywróć trening\n• test on / test off — grupa testowa");
     return;
   }
   // HIDDEN, OWNER-ONLY: manual trigger for the monthly avatar cache (normally runs 1st @ 04:00).
@@ -1505,7 +1513,7 @@ async function handleOwnerCommand(text, cfg) {
   } else if (cmd.action === "remind") {
     let total = 0;
     const injured = activeInjuryLids(state.injuries, todayWarsaw());
-    for (const poll of activePolls()) { const r = await sendReminder(sock, poll, cfg, isLastCall(poll), injured); if (r && r.count) total += r.count; }
+    for (const poll of activePolls()) { const r = await sendReminder(sock, poll, cfg, isLastCall(poll, cfg), injured); if (r && r.count) total += r.count; }
     await notify(sock, cfg, activePolls().length ? ("Przypomnienie wysłane do " + total + " osób.") : "Brak aktywnej ankiety.");
   } else if (cmd.action === "cancel") {
     const r = doCancel(text);

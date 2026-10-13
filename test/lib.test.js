@@ -6,7 +6,8 @@ const path = require("path");
 const { attendanceFromTally, weightOfOptions, confirmedPlayers, squadIsFull, reminderSkipAt, parseAnkieta, formatPln, pollName, settlementCost, parseRozliczArgs, pickSettlementPoll, pollHasStarted, nextDateForDay, isAdmin, settlementPeople, matchPoll, parseAbsenceDays, activeInjuryLids, reconnectDelay, healthReport, mergeGameRows, hasBannedVenueWord, votersChoosing, attendanceCounts, pickTopByAttendance, daysUntil,
   parseSettlementShorthand, pollBeatsHistory, looksLikeFullSurname, suggestedInitialName, newAttendeesFromMentions, extraMvpCandidates,
   nextAvatarMeta, topTiedEntries, mvpWinCount, looksLikeOwnerCommand, looksLikeGameResponse,
-  authStateSnapshot, authStateDiffEvents } = require("../lib");
+  authStateSnapshot, authStateDiffEvents, reminderSlots, cronForSlot, votingDeadline, lastCallDays,
+  rollCallSlot, rollCallMessage } = require("../lib");
 
 test("newAttendeesFromMentions: only genuinely new people, deduped", () => {
   const poll = { voters: {
@@ -688,4 +689,86 @@ test("pickSettlementPoll: cancelled games are never picked", () => {
   const friCancelled = Object.assign({}, FRI, { cancelled: true });
   assert.strictEqual(pickSettlementPoll([friCancelled, SAT], at("2026-09-18", "22:00")), SAT);
   assert.strictEqual(pickSettlementPoll([friCancelled], at("2026-09-18", "22:00")), null);
+});
+
+// --- Reminder slots / voting deadline / roll call (v1.38, the 2026-10-12 group decision) ---
+
+test("reminderSlots: a Friday game nudges Mon PM, Tue AM, Tue PM — nothing on Wednesday", () => {
+  const slots = reminderSlots("friday", {});
+  assert.deepStrictEqual(slots.map(s => s.cron), ["0 18 * * 1", "0 10 * * 2", "0 18 * * 2"]);
+  assert.deepStrictEqual(slots.map(s => s.label), ["pn 18:00", "wt 10:00", "wt 18:00"]);
+  // Only the last one is the last call (chases the "Nie wiem" voters)
+  assert.deepStrictEqual(slots.map(s => s.urgent), [false, false, true]);
+  // Wednesday is weekday 3 — the morning the hall still gets cancelled free, never a reminder day
+  assert.ok(slots.every(s => s.weekday !== 3));
+});
+
+test("reminderSlots: offsets wrap backwards across the week", () => {
+  assert.deepStrictEqual(reminderSlots("monday", {}).map(s => s.label), ["czw 18:00", "pt 10:00", "pt 18:00"]);
+  assert.deepStrictEqual(reminderSlots("sunday", {}).map(s => s.label), ["śr 18:00", "czw 10:00", "czw 18:00"]);
+});
+
+test("reminderSlots: config overrides the defaults and sorts chronologically", () => {
+  const cfg = { reminderSlots: [{ daysBefore: 3, time: "19:30", urgent: true }, { daysBefore: 5, time: "09:00" }] };
+  const slots = reminderSlots("friday", cfg);
+  assert.deepStrictEqual(slots.map(s => s.label), ["nd 09:00", "wt 19:30"]);
+  assert.deepStrictEqual(slots.map(s => s.cron), ["0 9 * * 0", "30 19 * * 2"]);
+});
+
+test("reminderSlots: a malformed slot is dropped, the rest still fire", () => {
+  // A typo in config must never take the whole schedule down with it.
+  const cfg = { reminderSlots: [{ daysBefore: 4, time: "25:00" }, { daysBefore: 9, time: "18:00" }, { daysBefore: 3, time: "bzdura" }, { daysBefore: 2, time: "08:30" }] };
+  assert.deepStrictEqual(reminderSlots("friday", cfg).map(s => s.label), ["śr 08:30"]);
+  assert.deepStrictEqual(reminderSlots("nieistniejący", {}), []);
+});
+
+test("cronForSlot: 0 days before = game day itself", () => {
+  assert.strictEqual(cronForSlot("friday", 0, "09:05").cron, "5 9 * * 5");
+  assert.strictEqual(cronForSlot("friday", 7, "09:00"), null);   // more than a week out
+  assert.strictEqual(cronForSlot("friday", -1, "09:00"), null);
+  assert.strictEqual(cronForSlot("friday", 2, "9:00").label, "śr 09:00");  // single-digit hour padded
+});
+
+test("votingDeadline: the day of the LAST reminder, in the genitive we print", () => {
+  assert.deepStrictEqual(votingDeadline("friday", {}), { daysBefore: 3, weekday: 2, dayGen: "wtorku", short: "wt" });
+  assert.strictEqual(votingDeadline("sunday", {}).dayGen, "czwartku");
+  assert.strictEqual(votingDeadline("friday", { reminderSlots: [{ daysBefore: 1, time: "12:00" }] }).dayGen, "czwartku");
+});
+
+test("lastCallDays: follows the deadline, so a manual przypomnij matches the schedule", () => {
+  assert.strictEqual(lastCallDays({}), 3);   // was a hardcoded 2 before the deadline moved
+  assert.strictEqual(lastCallDays({ reminderSlots: [{ daysBefore: 1, time: "18:00", urgent: true }] }), 1);
+});
+
+test("rollCallSlot: Wednesday 08:00 for a Friday game, and switchable off", () => {
+  assert.strictEqual(rollCallSlot("friday", {}).cron, "0 8 * * 3");
+  assert.strictEqual(rollCallSlot("friday", {}).label, "śr 08:00");
+  assert.strictEqual(rollCallSlot("friday", { rollCall: false }), null);
+  assert.strictEqual(rollCallSlot("friday", { rollCall: { daysBefore: 2, time: "07:15" } }).cron, "15 7 * * 3");
+});
+
+test("rollCallMessage: enough players → we play, with the per-head cost", () => {
+  const m = rollCallMessage({ dayPl: "piątek", time: "20:00", confirmed: 11, minPlayers: 6, cost: 160, names: ["Marek", "Kuba"] });
+  assert.strictEqual(m.needsCancel, false);
+  assert.match(m.text, /Gramy 🏐 — 11 zapisanych, ok\. 15 zł od osoby\./);
+  assert.match(m.text, /Zapisani: Marek, Kuba\./);
+});
+
+test("rollCallMessage: below the minimum → cancel today, and tag whoever can do it", () => {
+  const m = rollCallMessage({ dayPl: "piątek", time: "20:00", confirmed: 4, minPlayers: 6, cost: 160, names: ["Marek"], callout: "@7584962621670" });
+  assert.strictEqual(m.needsCancel, true);
+  assert.match(m.text, /Tylko 4 zapisanych \(minimum 6\)\./);
+  assert.match(m.text, /@7584962621670 — decyzja o odwołaniu hali musi paść dziś rano/);
+});
+
+test("rollCallMessage: no cost, no names, no minimum configured", () => {
+  const m = rollCallMessage({ dayPl: "sobotę", confirmed: 3 });
+  assert.strictEqual(m.needsCancel, false);   // no minPlayers → never demands a cancellation
+  assert.strictEqual(m.text, "⏰ Ankieta na sobotę zamknięta.\nGramy 🏐 — 3 zapisanych.");
+});
+
+test("pollName: the voting deadline rides in the poll title", () => {
+  assert.strictEqual(pollName("piątek", "20:00", null, "wtorku"), "Siatkówka piątek 20:00 🏐 — gracie? (głosy do wtorku)");
+  assert.strictEqual(pollName("sobotę", "18:00", 390, "środy"), "Siatkówka sobotę 18:00, koszt 390 zł 🏐 — gracie? (głosy do środy)");
+  assert.strictEqual(pollName("piątek", "20:00", null), "Siatkówka piątek 20:00 🏐 — gracie?");  // unchanged without one
 });
