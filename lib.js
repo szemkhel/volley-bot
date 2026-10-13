@@ -65,6 +65,97 @@ function reminderSkipAt(cfg) {
   return raw == null ? 12 : Number(raw);
 }
 
+const WEEKDAY_INDEX = { sunday: 0, monday: 1, tuesday: 2, wednesday: 3, thursday: 4, friday: 5, saturday: 6 };
+const DAY_SHORT_PL = ["nd", "pn", "wt", "śr", "czw", "pt", "sb"];
+// Genitive — the form that follows "do" ("głosy do wtorku").
+const DAY_NAMES_PL_GEN = ["niedzieli", "poniedziałku", "wtorku", "środy", "czwartku", "piątku", "soboty"];
+
+// Reminder slots as "how many days before the game" + wall-clock time, so one definition covers
+// every game day instead of a hand-written cron per weekday.
+// Default = Monday afternoon, Tuesday morning, Tuesday afternoon for a Friday game: the group's
+// 2026-10-12 hall contract cancels a date free of charge only until WEDNESDAY MORNING, so voting
+// closes Tuesday end of day and every nudge has to land before that. Nothing may fire on Wednesday
+// — by then the decision is already made.
+const DEFAULT_REMINDER_SLOTS = [
+  { daysBefore: 4, time: "18:00" },
+  { daysBefore: 3, time: "10:00" },
+  { daysBefore: 3, time: "18:00", urgent: true },   // last call: also chases the "Nie wiem" voters
+];
+
+// One cron line for "`daysBefore` days before `gameDay`, at `time`". Returns null for anything
+// malformed — a typo in config must drop that one slot, never throw inside the cron setup.
+function cronForSlot(gameDay, daysBefore, time) {
+  const idx = WEEKDAY_INDEX[gameDay];
+  const d = Number(daysBefore);
+  const m = /^(\d{1,2}):(\d{2})$/.exec(String(time || ""));
+  if (idx == null || !isFinite(d) || d < 0 || d > 6 || !m) return null;
+  const h = parseInt(m[1], 10), min = parseInt(m[2], 10);
+  if (h > 23 || min > 59) return null;
+  const weekday = (idx - Math.floor(d) + 7) % 7;
+  const hhmm = (h < 10 ? "0" + h : String(h)) + ":" + m[2];
+  return { cron: min + " " + h + " * * " + weekday, weekday: weekday, label: DAY_SHORT_PL[weekday] + " " + hhmm, daysBefore: Math.floor(d), time: hhmm };
+}
+
+// Every reminder for one game day, earliest first. `cfg.reminderSlots` overrides the default set.
+function reminderSlots(gameDay, cfg) {
+  const raw = (cfg && Array.isArray(cfg.reminderSlots) && cfg.reminderSlots.length) ? cfg.reminderSlots : DEFAULT_REMINDER_SLOTS;
+  const out = [];
+  for (const s of raw) {
+    const slot = cronForSlot(gameDay, s && s.daysBefore, s && s.time);
+    if (slot) out.push(Object.assign(slot, { urgent: !!(s && s.urgent) }));
+  }
+  return out.sort((a, b) => (b.daysBefore - a.daysBefore) || a.time.localeCompare(b.time));
+}
+
+// When voting closes = the day of the LAST reminder, end of day. Derived rather than configured
+// separately so the deadline we announce can never drift from the day we stop nudging.
+function votingDeadline(gameDay, cfg) {
+  const slots = reminderSlots(gameDay, cfg);
+  if (!slots.length) return null;
+  const last = slots[slots.length - 1];
+  return { daysBefore: last.daysBefore, weekday: last.weekday, dayGen: DAY_NAMES_PL_GEN[last.weekday], short: DAY_SHORT_PL[last.weekday] };
+}
+
+// A manual `bot przypomnij` this close to the game is a last call, so it chases the "Nie wiem"
+// voters too. Tied to the last scheduled slot: with the deadline on Tuesday, a Friday game's last
+// call is 3 days out, not 2.
+function lastCallDays(cfg) {
+  const d = votingDeadline("friday", cfg);
+  return d ? d.daysBefore : 3;
+}
+
+// The Wednesday-morning roll call: the hall can still be cancelled free of charge that morning, so
+// this is the last moment the group can act on a thin turnout. `cfg.rollCall = false` turns it off.
+const DEFAULT_ROLL_CALL = { daysBefore: 2, time: "08:00" };
+function rollCallSlot(gameDay, cfg) {
+  const rc = (cfg && cfg.rollCall !== undefined) ? cfg.rollCall : DEFAULT_ROLL_CALL;
+  if (!rc) return null;
+  return cronForSlot(gameDay, rc.daysBefore != null ? rc.daysBefore : DEFAULT_ROLL_CALL.daysBefore,
+    rc.time || DEFAULT_ROLL_CALL.time);
+}
+
+// Text of the roll call. `needsCancel` tells the caller whether to tag the people who hold the
+// hall booking — the message is useless if the person who can cancel doesn't see it.
+// names = confirmed players, already resolved to display names.
+function rollCallMessage(o) {
+  const confirmed = Number((o && o.confirmed) || 0);
+  const min = Number((o && o.minPlayers) || 0);
+  const cost = Number((o && o.cost) || 0);
+  const names = (o && o.names) || [];
+  const where = "Ankieta na " + ((o && o.dayPl) || "grę") + ((o && o.time) ? " " + o.time : "") + " zamknięta.";
+  const lines = ["⏰ " + where];
+  const needsCancel = min > 0 && confirmed < min;
+  if (needsCancel) {
+    lines.push("Tylko " + confirmed + " zapisanych (minimum " + min + "). " + ((o && o.callout) ? o.callout + " — d" : "D") +
+      "ecyzja o odwołaniu hali musi paść dziś rano, póki jest bezpłatna.");
+  } else {
+    const perHead = cost > 0 && confirmed > 0 ? ", ok. " + Math.round(cost / confirmed) + " zł od osoby" : "";
+    lines.push("Gramy 🏐 — " + confirmed + " zapisanych" + perHead + ".");
+  }
+  if (names.length) lines.push("Zapisani: " + names.join(", ") + ".");
+  return { text: lines.join("\n"), needsCancel: needsCancel };
+}
+
 // Parse "piątek 20:00" / "czwartek 21" / "sobota 18:00 390" / "sobota 18:00 koszt 390,50 zł"
 // -> { day, time, cost }. Extraction order matters:
 //   1. a price WITH a currency ("390 zł", "390pln") goes first, so "390,50 zł" can never be
@@ -111,9 +202,12 @@ function formatPln(n) {
 
 // WhatsApp poll title. The price rides in the title so people see what they sign up for BEFORE
 // they vote — it's the same number the settlement will split later.
-function pollName(dayPl, time, cost) {
+// `deadlineGen` = genitive day name from votingDeadline(). The poll title is the one place every
+// member looks before voting, so the deadline the group agreed on 2026-10-12 belongs here.
+function pollName(dayPl, time, cost, deadlineGen) {
   return "Siatkówka " + (dayPl || "") + (time ? " " + time : "") +
-    (cost > 0 ? ", koszt " + formatPln(cost) + " zł" : "") + " 🏐 — gracie?";
+    (cost > 0 ? ", koszt " + formatPln(cost) + " zł" : "") + " 🏐 — gracie?" +
+    (deadlineGen ? " (głosy do " + deadlineGen + ")" : "");
 }
 
 // Hall cost to split for a game. A price given when the poll was posted
@@ -178,8 +272,7 @@ function pickSettlementPoll(polls, now) {
 // Next date (YYYY-MM-DD, Europe/Warsaw) for a weekday name; includes today if it matches.
 // `now` is injectable for testing.
 function nextDateForDay(dayName, now) {
-  const map = { sunday: 0, monday: 1, tuesday: 2, wednesday: 3, thursday: 4, friday: 5, saturday: 6 };
-  const target = map[dayName];
+  const target = WEEKDAY_INDEX[dayName];
   if (target == null) return null;
   const warsawStr = (now || new Date()).toLocaleDateString("en-CA", { timeZone: "Europe/Warsaw" });
   const base = new Date(warsawStr + "T12:00:00");
@@ -566,7 +659,9 @@ function isDroppedConnection(err) {
   return /fetch failed|terminated/i.test(err.message || "");
 }
 
-module.exports = { DAY_WORDS, attendanceFromTally, weightOfOptions, confirmedPlayers, squadIsFull, reminderSkipAt, parseAnkieta, formatPln, pollName, settlementCost, parseRozliczArgs, pickSettlementPoll, pollHasStarted, nextDateForDay, isAdmin, settlementPeople, matchPoll, parseAbsenceDays, activeInjuryLids, reconnectDelay, healthReport, mergeGameRows, hasBannedVenueWord, votersChoosing, attendanceCounts, pickTopByAttendance, daysUntil,
+module.exports = { DAY_WORDS, attendanceFromTally, weightOfOptions, confirmedPlayers, squadIsFull, reminderSkipAt, parseAnkieta, formatPln, pollName, settlementCost, parseRozliczArgs, pickSettlementPoll, pollHasStarted, nextDateForDay,
+reminderSlots, cronForSlot, votingDeadline, lastCallDays, rollCallSlot, rollCallMessage,
+DEFAULT_REMINDER_SLOTS, DAY_NAMES_PL_GEN, isAdmin, settlementPeople, matchPoll, parseAbsenceDays, activeInjuryLids, reconnectDelay, healthReport, mergeGameRows, hasBannedVenueWord, votersChoosing, attendanceCounts, pickTopByAttendance, daysUntil,
 parseSettlementShorthand, pollBeatsHistory, looksLikeFullSurname, suggestedInitialName, newAttendeesFromMentions, extraMvpCandidates,
 nextAvatarMeta, topTiedEntries, mvpWinCount, looksLikeOwnerCommand, looksLikeGameResponse,
 authStateSnapshot, authStateDiffEvents, fetchErrorDetail, isDroppedConnection };

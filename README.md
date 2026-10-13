@@ -98,14 +98,19 @@ link pojawia się też pod odpowiedziami na `bot ranking` / `bot frekwencja` / `
 - **Poniedziałek 10:00** — wystawia ankietę na najbliższy trening (domyślnie piątek 20:00).
   Jeśli WhatsApp w tym momencie nie odpowiada, bot ponawia próby i sprawdza co godzinę do 20:00,
   więc chwilowa awaria łącza nie kosztuje całego tygodnia
-- **Przypomnienia** — wtorek 18:00 (pierwsze) i środa 17:00 (ostatnie) dla piątkowego treningu;
-  terminy przesuwają się, gdy gramy w inny dzień. Pierwsze zagaduje tych, którzy jeszcze nie
-  zagłosowali. **Ostatnie dodatkowo dopytuje osoby z „Nie wiem"** — to już ostatni dzień na
-  odwołanie sali, więc niezdecydowany głos nie pomaga bardziej niż brak głosu
+- **Przypomnienia** — trzy terminy przed piątkowym treningiem: **poniedziałek 18:00, wtorek 10:00
+  i wtorek 18:00**. Terminy przesuwają się, gdy gramy w inny dzień (liczone są jako „ile dni przed
+  grą”, do zmiany w `reminderSlots` w `config.json`). W środę nie ma już nic — wtedy decyzja jest
+  podjęta. Każde przypomnienie podaje termin zamknięcia ankiety. **Ostatnie (wtorek 18:00)
+  dodatkowo dopytuje osoby z „Nie wiem"** — ankieta zamyka się tego dnia, więc niezdecydowany głos
+  nie pomaga bardziej niż brak głosu
+- **Zamknięcie ankiety — środa 08:00** (`rollCall` w `config.json`; `false` wyłącza). Bot podaje
+  ostateczną listę zapisanych i koszt na osobę. Jeśli zapisanych jest mniej niż `minPlayers`,
+  oznacza adminów: halę trzeba odwołać tego ranka, póki jest to bezpłatne
 - **Bot nie przypomina, gdy skład jest już pełny** — jeśli w momencie wysyłki zapisanych jest co
   najmniej 12 osób (`reminderSkipAt` w `config.json`, gościom z „+1"/„+2" też się liczy), to
-  przypomnienie zostaje pominięte. Każdy z dwóch terminów sprawdzany jest osobno, więc gdy ktoś
-  wypisze się po pierwszym przypomnieniu, drugie znów pójdzie
+  przypomnienie zostaje pominięte. Każdy termin sprawdzany jest osobno, więc gdy ktoś
+  wypisze się po pierwszym przypomnieniu, kolejne znów pójdzie
 - Bot oznacza (@) tylko osoby **aktualnie należące do grupy** — skład sprawdza na żywo przed
   każdym przypomnieniem, rozliczeniem i ogłoszeniem MVP, żeby nie zostawiać martwych oznaczeń
 - **Wtorek 12:00** — jeśli nie ma ankiety, pyta grupę czy gramy

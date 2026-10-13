@@ -1,7 +1,7 @@
 const Anthropic = require("@anthropic-ai/sdk");
 const fs = require("fs");
 const path = require("path");
-const { hasBannedVenueWord, votersChoosing, parseSettlementShorthand } = require("./lib");
+const { hasBannedVenueWord, votersChoosing, parseSettlementShorthand, votingDeadline, daysUntil } = require("./lib");
 
 // The poll option that means "still undecided" — must match POLL_OPTIONS in index.js.
 const UNDECIDED_OPTION = "Nie wiem";
@@ -113,7 +113,7 @@ async function analyzeGameResponse(recentMessages, config) {
   }
 }
 
-async function generateReminder(nonVoters, config, isUrgent, gameDay = "friday") {
+async function generateReminder(nonVoters, config, isUrgent, gameDay = "friday", deadline) {
   const contacts = loadContacts();
   const names = nonVoters.map(v => v.name || contacts[v.phone] || v.phone);
   const dayPl = DAY_NAMES_PL[gameDay] || "piątek";
@@ -121,9 +121,17 @@ async function generateReminder(nonVoters, config, isUrgent, gameDay = "friday")
   try {
     const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY || config.anthropicApiKey });
 
-    const urgency = isUrgent
-      ? `To ostatnie przypomnienie przed ${dayPl}iem - musimy wiedzieć, czy rezerwować salę!`
-      : `To pierwsze przypomnienie w tym tygodniu.`;
+    // The group's 2026-10-12 rule: votes close end of the deadline day, because the hall must be
+    // confirmed or cancelled the following morning. Every reminder states it, so nobody can claim
+    // they didn't know when voting shut.
+    const closes = (deadline && deadline.today)
+      ? `Ankieta zamyka się DZIŚ do końca dnia - rano trzeba potwierdzić albo odwołać halę.`
+      : (deadline && deadline.dayGen) ? `Głosujemy do ${deadline.dayGen}, do końca dnia.` : "";
+    // Not "rezerwować salę" any more: under the contract the hall is already booked for every
+    // Friday, so what hangs on the vote is whether we confirm it or give it back.
+    const urgency = (isUrgent
+      ? `To ostatnie wołanie przed ${dayPl}iem - musimy wiedzieć, czy gramy, czy odwołujemy halę!`
+      : `To przypomnienie o głosowaniu w ankiecie.`) + (closes ? " " + closes : "");
 
     const content = `Napisz krótką wiadomość po polsku (1-2 zdania) do grupy znajomych przypominającą o głosowaniu w ankiecie na volleyball w ${dayPl}. ` +
       `Ton: ciepły, żartobliwy i koleżeński - jakbyś pisał do przyjaciół. Zero złośliwości ani zawstydzania. ` +
@@ -198,11 +206,16 @@ async function sendReminder(sock, poll, config, isUrgent, excludePhones) {
     }
 
     const day = poll.gameDay || "friday";
+    // How the voting deadline is phrased depends on whether it falls today (the last slot) or
+    // later in the week (the earlier slots).
+    const dl = votingDeadline(day, config);
+    const left = daysUntil(poll.gameDate, new Date().toLocaleDateString("en-CA", { timeZone: config.timezone || "Europe/Warsaw" }));
+    const deadlineInfo = dl ? { dayGen: dl.dayGen, today: left != null && left <= dl.daysBefore } : null;
     console.log("Sending reminder to", nonVoters.length, "non-voters +", undecided.length, "undecided (game day:", day + ")...");
 
     let text = "";
     if (nonVoters.length) {
-      text = await generateReminder(nonVoters, config, isUrgent, day);
+      text = await generateReminder(nonVoters, config, isUrgent, day, deadlineInfo);
       for (const v of nonVoters) {
         const displayName = v.name || v.phone;
         text = text.replace(new RegExp("@" + displayName, "gi"), "@" + v.phone);
@@ -214,7 +227,9 @@ async function sendReminder(sock, poll, config, isUrgent, excludePhones) {
     if (undecided.length) {
       const tags = undecided.map(v => "@" + v.phone).join(" ");
       const line = tags + " - macie w ankiecie \"" + UNDECIDED_OPTION + "\". " +
-        "Dziś ostatni dzień, żeby odwołać salę, więc dajcie znać, czy gracie. 🏐";
+        ((deadlineInfo && deadlineInfo.today)
+          ? "Ankieta zamyka się dziś do końca dnia, więc dajcie znać, czy gracie. 🏐"
+          : "Dajcie znać, czy gracie" + (deadlineInfo ? " - głosujemy do " + deadlineInfo.dayGen : "") + ". 🏐");
       text = text ? text + "\n\n" + line : line;
     }
 
