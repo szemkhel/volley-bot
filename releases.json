@@ -1,5 +1,12 @@
 [
   {
+    "version": "v1.39",
+    "date": "15 października 2026",
+    "notes": [
+      "Bot nie wystawia już sam ankiety na grę, na którą minął termin głosowania. We wtorek zapytał „Gramy w tym tygodniu?”, a w środę wziął rozmowę o piątkowej hali za odpowiedź i wystawił ankietę na piątek z „głosami do wtorku”, choć w tym tygodniu graliśmy tylko w czwartek. Teraz w takiej sytuacji tylko powiadamia organizatora."
+    ]
+  },
+  {
     "version": "v1.38",
     "date": "13 października 2026",
     "notes": [

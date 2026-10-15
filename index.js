@@ -11,7 +11,7 @@ const { DAY_WORDS, attendanceFromTally, weightOfOptions, confirmedPlayers, squad
   reminderSlots, rollCallSlot, votingDeadline, lastCallDays, settlementPeople, matchPoll, parseAbsenceDays, activeInjuryLids, reconnectDelay, healthReport, mergeGameRows, attendanceCounts, pickTopByAttendance, daysUntil,
   pollBeatsHistory, looksLikeFullSurname, suggestedInitialName, newAttendeesFromMentions, extraMvpCandidates,
   topTiedEntries, mvpWinCount, looksLikeOwnerCommand, looksLikeGameResponse,
-  authStateSnapshot, authStateDiffEvents, fetchErrorDetail } = require("./lib");
+  authStateSnapshot, authStateDiffEvents, fetchErrorDetail, autoPollAllowed } = require("./lib");
 
 const DIR = __dirname;
 const STATE_FILE = path.join(DIR, "state.json");
@@ -1791,7 +1791,14 @@ async function connectToWhatsApp() {
             if (result.playing === true && result.day) {
               state.askedAboutGame = false;
               saveState(state);
-              if (!pollsForDay(result.day).length) {
+              if (pollsForDay(result.day).length) {
+                // already have that game — nothing to post
+              } else if (!autoPollAllowed(result.day, cfg)) {
+                // Voting for that game is already closed (lib.autoPollAllowed has the 2026-10-14
+                // story) — a poll now would be a stray. Leave the call to the owner.
+                console.log("[Game response] Playing on", result.day, "— past its voting deadline, no poll posted");
+                await notify(sock, cfg, `Grupa chyba potwierdziła grę (${result.day}), ale termin głosowania już minął — nie wystawiam ankiety. Jeśli trzeba, wystaw ją ręcznie: "bot ankieta <dzień> <godzina>".`);
+              } else {
                 const name = await createPoll(cfg, result.day, null, cfg.groupJid);
                 console.log("[Game response] Playing on", result.day, "— poll created");
                 await notify(sock, cfg, `Grupa potwierdziła grę (${result.day}) — wystawiłem ankietę: ${name}`);

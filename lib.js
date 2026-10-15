@@ -116,6 +116,23 @@ function votingDeadline(gameDay, cfg) {
   return { daysBefore: last.daysBefore, weekday: last.weekday, dayGen: DAY_NAMES_PL_GEN[last.weekday], short: DAY_SHORT_PL[last.weekday] };
 }
 
+// May the bot still post a poll ON ITS OWN for `gameDay`? Only while that game's voting deadline
+// (end of the deadline day) hasn't passed. On 2026-10-14 the Tuesday "Gramy w tym tygodniu?"
+// question was still pending a day later; a Wednesday message about the Friday hall contract was
+// read as "playing Friday" and the bot posted a Friday poll whose deadline ("głosy do wtorku") and
+// reminders were already over, in a week whose only game was Thursday. Past the deadline nobody
+// can usefully vote, so the owner is asked to post it by hand instead.
+function autoPollAllowed(gameDay, cfg, now) {
+  const gameDate = nextDateForDay(gameDay, now);
+  if (!gameDate) return false;
+  const d = votingDeadline(gameDay, cfg);
+  if (!d) return true;
+  const deadline = new Date(gameDate + "T12:00:00Z");
+  deadline.setUTCDate(deadline.getUTCDate() - d.daysBefore);
+  const today = (now || new Date()).toLocaleDateString("en-CA", { timeZone: "Europe/Warsaw" });
+  return today <= deadline.toISOString().slice(0, 10);
+}
+
 // A manual `bot przypomnij` this close to the game is a last call, so it chases the "Nie wiem"
 // voters too. Tied to the last scheduled slot: with the deadline on Tuesday, a Friday game's last
 // call is 3 days out, not 2.
@@ -660,7 +677,7 @@ function isDroppedConnection(err) {
 }
 
 module.exports = { DAY_WORDS, attendanceFromTally, weightOfOptions, confirmedPlayers, squadIsFull, reminderSkipAt, parseAnkieta, formatPln, pollName, settlementCost, parseRozliczArgs, pickSettlementPoll, pollHasStarted, nextDateForDay,
-reminderSlots, cronForSlot, votingDeadline, lastCallDays, rollCallSlot, rollCallMessage,
+reminderSlots, cronForSlot, votingDeadline, autoPollAllowed, lastCallDays, rollCallSlot, rollCallMessage,
 DEFAULT_REMINDER_SLOTS, DAY_NAMES_PL_GEN, isAdmin, settlementPeople, matchPoll, parseAbsenceDays, activeInjuryLids, reconnectDelay, healthReport, mergeGameRows, hasBannedVenueWord, votersChoosing, attendanceCounts, pickTopByAttendance, daysUntil,
 parseSettlementShorthand, pollBeatsHistory, looksLikeFullSurname, suggestedInitialName, newAttendeesFromMentions, extraMvpCandidates,
 nextAvatarMeta, topTiedEntries, mvpWinCount, looksLikeOwnerCommand, looksLikeGameResponse,

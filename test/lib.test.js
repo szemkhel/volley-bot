@@ -6,7 +6,7 @@ const path = require("path");
 const { attendanceFromTally, weightOfOptions, confirmedPlayers, squadIsFull, reminderSkipAt, parseAnkieta, formatPln, pollName, settlementCost, parseRozliczArgs, pickSettlementPoll, pollHasStarted, nextDateForDay, isAdmin, settlementPeople, matchPoll, parseAbsenceDays, activeInjuryLids, reconnectDelay, healthReport, mergeGameRows, hasBannedVenueWord, votersChoosing, attendanceCounts, pickTopByAttendance, daysUntil,
   parseSettlementShorthand, pollBeatsHistory, looksLikeFullSurname, suggestedInitialName, newAttendeesFromMentions, extraMvpCandidates,
   nextAvatarMeta, topTiedEntries, mvpWinCount, looksLikeOwnerCommand, looksLikeGameResponse,
-  authStateSnapshot, authStateDiffEvents, reminderSlots, cronForSlot, votingDeadline, lastCallDays,
+  authStateSnapshot, authStateDiffEvents, reminderSlots, cronForSlot, votingDeadline, autoPollAllowed, lastCallDays,
   rollCallSlot, rollCallMessage } = require("../lib");
 
 test("newAttendeesFromMentions: only genuinely new people, deduped", () => {
@@ -772,4 +772,14 @@ test("pollName: the voting deadline rides in the poll title", () => {
   assert.strictEqual(pollName("piątek", "20:00", null, "wtorku"), "Siatkówka piątek 20:00 🏐 — gracie? (głosy do wtorku)");
   assert.strictEqual(pollName("sobotę", "18:00", 390, "środy"), "Siatkówka sobotę 18:00, koszt 390 zł 🏐 — gracie? (głosy do środy)");
   assert.strictEqual(pollName("piątek", "20:00", null), "Siatkówka piątek 20:00 🏐 — gracie?");  // unchanged without one
+});
+
+test("autoPollAllowed: the bot may post a poll itself only until that game's voting deadline", () => {
+  // Week of 2026-10-12 (Mon). Default slots put the deadline 3 days before the game.
+  const tue = new Date("2026-10-13T10:00:00Z"), wed = new Date("2026-10-14T14:44:35Z");
+  assert.strictEqual(autoPollAllowed("friday", {}, tue), true);    // Friday's deadline is Tuesday
+  assert.strictEqual(autoPollAllowed("friday", {}, wed), false);   // the 2026-10-14 stray poll
+  assert.strictEqual(autoPollAllowed("thursday", {}, wed), false); // Monday deadline, long gone
+  assert.strictEqual(autoPollAllowed("sunday", {}, wed), true);    // Sunday 10-18 → deadline Thursday
+  assert.strictEqual(autoPollAllowed("nonsense", {}, wed), false);
 });

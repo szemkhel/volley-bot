@@ -113,7 +113,8 @@ link pojawia się też pod odpowiedziami na `bot ranking` / `bot frekwencja` / `
   wypisze się po pierwszym przypomnieniu, kolejne znów pójdzie
 - Bot oznacza (@) tylko osoby **aktualnie należące do grupy** — skład sprawdza na żywo przed
   każdym przypomnieniem, rozliczeniem i ogłoszeniem MVP, żeby nie zostawiać martwych oznaczeń
-- **Wtorek 12:00** — jeśli nie ma ankiety, pyta grupę czy gramy
+- **Wtorek 12:00** — jeśli nie ma ankiety, pyta grupę czy gramy. Sam wystawi ankietę tylko
+  wtedy, gdy na tę grę da się jeszcze głosować; po terminie głosowania tylko powiadamia organizatora
 - **Po treningu** — automatycznie zapisuje frekwencję
 - Czyta wiadomości przy ankiecie i sam wykrywa, gdy gramy w inny dzień niż zwykle
 
