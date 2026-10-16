@@ -11,7 +11,7 @@ const { DAY_WORDS, attendanceFromTally, weightOfOptions, confirmedPlayers, squad
   reminderSlots, rollCallSlot, votingDeadline, lastCallDays, settlementPeople, matchPoll, parseAbsenceDays, activeInjuryLids, reconnectDelay, healthReport, mergeGameRows, attendanceCounts, pickTopByAttendance, daysUntil,
   pollBeatsHistory, looksLikeFullSurname, suggestedInitialName, newAttendeesFromMentions, extraMvpCandidates,
   topTiedEntries, mvpWinCount, looksLikeOwnerCommand, looksLikeGameResponse,
-  authStateSnapshot, authStateDiffEvents, fetchErrorDetail, autoPollAllowed } = require("./lib");
+  authStateSnapshot, authStateDiffEvents, fetchErrorDetail, autoPollAllowed, newPollGameDate, pollsReplacedBy } = require("./lib");
 
 const DIR = __dirname;
 const STATE_FILE = path.join(DIR, "state.json");
@@ -608,8 +608,9 @@ async function createPoll(cfg, day, time, targetJid, cost) {
   const name = pollName(dayPl, time, cost, deadline && deadline.dayGen);
   const sent = await sock.sendMessage(targetJid, { poll: { name, values: POLL_OPTIONS, selectableCount: 1 } });
 
-  // Replace any existing tracked poll for the SAME day (re-post, incl. disabled); leave other days intact
-  for (const p of allPolls().filter(p => p.gameDay === gday)) removePoll(p);
+  // Replace any existing tracked poll for the SAME game (re-post, incl. disabled); leave other games intact
+  const gameDate = newPollGameDate(gday);
+  for (const p of pollsReplacedBy(allPolls(), gday, gameDate)) removePoll(p);
 
   const optionHashes = {};
   for (const o of POLL_OPTIONS) optionHashes[crypto.createHash("sha256").update(Buffer.from(o)).digest("hex")] = o;
@@ -624,7 +625,7 @@ async function createPoll(cfg, day, time, targetJid, cost) {
     encKeyB64: secret ? Buffer.from(secret).toString("base64") : null,
     gameDay: gday,
     gameTime: time || null,
-    gameDate: nextDateForDay(gday),
+    gameDate,
     hallCost: cost > 0 ? cost : null,
     voters: {},
     timestamp: Date.now(),
@@ -1831,21 +1832,22 @@ async function connectToWhatsApp() {
         // Determine which day this poll is for, then add/replace that day's poll (don't evict others)
         const { detectGameDay } = require("./reminder");
         const detectedDay = await detectGameDay(pollMsg.name, recentMessages, cfg) || state.gameDay || "friday";
-        for (const p of allPolls().filter(p => p.gameDay === detectedDay)) removePoll(p);
+        const gameDate = newPollGameDate(detectedDay);
+        for (const p of pollsReplacedBy(allPolls(), detectedDay, gameDate)) removePoll(p);
         const pa = parseAnkieta(pollMsg.name);
         const poll = {
           messageKey: { id: msg.key.id, remoteJid: msg.key.remoteJid },
           question: pollMsg.name, options: optNames, optionHashes,
           pollCreatorJid: (msg.key.participant || msg.key.remoteJid),
           encKeyB64: secret ? Buffer.from(secret).toString("base64") : null,
-          gameDay: detectedDay, gameTime: pa.time || null, gameDate: nextDateForDay(detectedDay),
+          gameDay: detectedDay, gameTime: pa.time || null, gameDate,
           voters: {}, timestamp: Date.now(),
         };
         state.polls.push(poll);
         state.askedAboutGame = false;
         saveState(state);
         console.log("Poll tracking started for", detectedDay);
-        await notify(sock, cfg, `Wykryto nową ankietę (${detectedDay}): "${pollMsg.name}". Śledzę głosy.`);
+        await notify(sock, cfg, `Wykryto nową ankietę (${detectedDay} ${gameDate}): "${pollMsg.name}". Śledzę głosy.`);
         const { scheduleReminders } = require("./scheduler");
         scheduleReminders(getSock, state, saveState, cfg);
       }
