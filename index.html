@@ -353,7 +353,7 @@ details p{margin-top:8px;color:var(--muted)}
     <div class="sub k-c" style="border-color:var(--c-fill)">
       <span class="who2">Z karnetem</span>
       <div class="pricerow"><span class="price num" style="color:var(--c)">16 zł <small>/ gra</small></span>
-      <div class="ctrl mini"><label for="kPeople">Osób na piątek: <span class="val num" id="kPeopleV">11</span></label><input type="range" id="kPeople" min="6" max="14" value="11"></div></div>
+      <div class="ctrl mini"><label for="kPeople">Osób na piątek: <span class="val num" id="kPeopleV">11</span></label><input type="range" id="kPeople" min="8" max="14" value="11"></div></div>
       <ul>
         <li>płacisz 160 zł za 10 wejść, z góry</li>
         <li>odbijasz 1 wejście za każdy piątek</li>
@@ -384,7 +384,7 @@ details p{margin-top:8px;color:var(--muted)}
     <div class="bigline">
       <div class="tile" style="--b:var(--c)"><b class="num" id="kWeek">+8 zł</b><span>do skarbonki w zwykły piątek</span></div>
       <div class="tile" style="--b:var(--c)"><b class="num" id="kYear">416 zł</b><span>w skarbonce po roku</span></div>
-      <div class="tile" style="--b:var(--c)"><b class="num" id="kWeak">−48 zł</b><span>dopłaca skarbonka, gdy przyjdzie tylko 7 osób</span></div>
+      <div class="tile" style="--b:var(--c)"><b class="num" id="kWeak">−32 zł</b><span>dopłaca skarbonka, gdy przyjdzie tylko 8 osób</span></div>
     </div>
   </div>
 </section>
@@ -403,8 +403,8 @@ details p{margin-top:8px;color:var(--muted)}
       <g id="dots"></g>
     </svg>
     <div class="ctrl">
-      <label for="came">Przyszło: <span class="val num" id="cameV">6</span> osób</label>
-      <input type="range" id="came" min="4" max="14" value="6">
+      <label for="came">Przyszło: <span class="val num" id="cameV">8</span> osób</label>
+      <input type="range" id="came" min="8" max="14" value="8">
     </div>
     <div class="res">
       <div class="r k-a"><span class="t">A · Jak dotychczas</span><span class="p num" id="ra"></span><span class="s" id="rsa"></span></div>
@@ -575,7 +575,7 @@ details p{margin-top:8px;color:var(--muted)}
     $('kWeek').textContent = (week>=0?'+':'−') + zl0(Math.abs(week));
     $('kWeek').nextElementSibling.textContent = week>=0 ? 'do skarbonki w taki piątek' : 'dopłaca skarbonka w taki piątek';
     $('kYear').textContent = (left<0?'−':'') + zl0(Math.abs(left));
-    const weakN = 7, weak = HALL - weakN*KARNET;
+    const weakN = 8, weak = HALL - weakN*KARNET;
     $('kWeak').textContent = '−' + zl0(Math.max(0, weak));
     $('kCmpBody').innerHTML = [[1,'1 raz w miesiącu'],[2,'2 razy w miesiącu'],[3,'3 razy w miesiącu'],[4,'w każdy piątek']].map(([m,l]) => {
       const c = Math.round(g*m/4), kk = Math.ceil(c/10);
