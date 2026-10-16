@@ -255,21 +255,22 @@ details p{margin-top:8px;color:var(--muted)}
     </article>
     <article class="opt k-c">
       <h3>C · Karnet</h3>
-      <div class="big num">150 zł <small>za 10 wejść</small></div>
+      <div class="big num">160 zł <small>za 10 wejść</small></div>
       <ul class="how">
         <li>Kupujesz karnet i odbijasz 1 wejście za każdy piątek.</li>
         <li>Bez karnetu płacisz 20 zł za wejście.</li>
+        <li>1 wejście = 160 zł ÷ 10 osób = 16 zł. Gdy gra więcej niż 10 osób, nadwyżka idzie do skarbonki.</li>
       </ul>
       <ul class="pm">
-        <li class="plus">Stała cena 15 zł, bez względu na frekwencję.</li>
-        <li class="plus">Bez deklaracji na cały rok, wystarczy 150 zł na raz.</li>
+        <li class="plus">Stała cena 16 zł, bez względu na frekwencję.</li>
+        <li class="plus">Bez deklaracji na cały rok, wystarczy 160 zł na raz.</li>
         <li class="plus">Pieniądze wpływają z góry, więc Krzysiek nie kredytuje.</li>
-        <li class="minus">Kto gra w każdy piątek, zapłaci więcej niż w opcji B: ok. 705 zł zamiast ok. 470 zł za rok.</li>
+        <li class="minus">Kto gra w każdy piątek, zapłaci więcej niż w opcji B: ok. 750 zł zamiast ok. 470 zł za rok.</li>
         <li class="minus">Ktoś musi pilnować, ile kto ma wejść.</li>
         <li class="minus">Seria słabych piątków może opróżnić skarbonkę.</li>
         <li class="minus">Nikt nie ma pierwszeństwa.</li>
       </ul>
-      <p class="who">Słaby piątek: brakującą kwotę pokrywa <b>skarbonka</b> z nadwyżek.</p>
+      <p class="who">Np. przy 12 osobach wejścia 2 osób (32 zł) idą do <b>skarbonki</b>, a w słaby piątek skarbonka pokrywa brakującą kwotę.</p>
     </article>
   </div>
 </section>
@@ -383,7 +384,7 @@ details p{margin-top:8px;color:var(--muted)}
 
 <script>
 (function(){
-  const HALL = 160, WEEKS = 52, SIGNED = 10, AVG = 10.5, SINGLE = 20, KARNET = 15;
+  const HALL = 160, WEEKS = 52, SIGNED = 10, AVG = 10.5, SINGLE = 20, KARNET = 16;
   const $ = id => document.getElementById(id);
   const fmt = (n, d) => n.toLocaleString('pl-PL', {minimumFractionDigits: d, maximumFractionDigits: d});
   const zl = n => fmt(Math.round(n*100)/100, Number.isInteger(Math.round(n*100)/100) ? 0 : 2) + ' zł';
@@ -475,7 +476,7 @@ details p{margin-top:8px;color:var(--muted)}
       {k:'var(--a)', l:'A · Jak dotychczas', s:'160 zł ÷ obecni', v: g*HALL/AVG},
       {k:'var(--b)', l:'B · W trzonie', s:'subskrypcja minus zwroty', v: trzonNet},
       {k:'color-mix(in srgb,var(--b) 40%,var(--bg))', l:'B · Gościnni', s:'20 zł za grę', v: g*SINGLE},
-      {k:'var(--c-fill)', l:'C · Karnet', s:'15 zł za wejście', v: g*KARNET},
+      {k:'var(--c-fill)', l:'C · Karnet', s:'16 zł za wejście', v: g*KARNET},
     ];
     const max = Math.max(...rows.map(r=>r.v), 1), min = Math.min(...rows.map(r=>r.v));
     $('bars').innerHTML = rows.map(r =>
