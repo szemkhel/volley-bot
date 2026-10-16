@@ -479,7 +479,7 @@ details p{margin-top:8px;color:var(--muted)}
     btns.forEach(b => b.setAttribute('aria-pressed', String(+b.dataset.m === m)));
     const g = Math.round(+$('played').value * m/4);
     const rows = [
-      {k:'var(--a)', l:'A · Jak dotychczas', s:'160 zł ÷ obecni', v: g*HALL/AVG, old:'Od tego modelu odchodzimy'},
+      {k:'var(--a)', l:'A · Jak dotychczas', s:'160 zł ÷ obecni', v: g*HALL/AVG, old:'Obecny model, w zeszłym tygodniu się nie sprawdził'},
       {k:'var(--b)', l:'B · W trzonie', s:'subskrypcja minus zwroty', v: trzonNet},
       {k:'color-mix(in srgb,var(--b) 40%,var(--bg))', l:'B · Gościnni', s:'20 zł za grę', v: g*SINGLE},
       {k:'var(--c-fill)', l:'C · Karnet', s:'16 zł za wejście', v: g*KARNET},
