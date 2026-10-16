@@ -104,7 +104,18 @@ input[type=range]{width:100%;accent-color:var(--b);height:30px}
 .p.bad{color:var(--warn)}
 
 /* subscription */
-.subs{display:grid;grid-template-columns:minmax(0,1fr);gap:14px;max-width:520px}
+.subs{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;align-items:stretch}
+.sub.guest{border-color:color-mix(in srgb,var(--b) 35%,var(--line))}
+.sub .who2{font-family:var(--display);font-weight:800;font-size:15px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+.sub.guest .price{color:var(--ink)}
+.cmp{width:100%;border-collapse:collapse;font-size:16px}
+.cmp th,.cmp td{padding:10px 12px;text-align:right;border-bottom:1px solid var(--line)}
+.cmp th:first-child,.cmp td:first-child{text-align:left}
+.cmp thead th{font-family:var(--display);font-weight:800;font-size:15px;color:var(--muted)}
+.cmp td{font-variant-numeric:tabular-nums}
+.cmp td.win{color:var(--ok);font-weight:700}
+.cmp td.win::after{content:" ★"}
+.cmpwrap{overflow-x:auto;background:var(--panel);border:1px solid var(--line);border-radius:14px}
 .sub{border:2px solid var(--line);border-radius:16px;padding:16px;display:flex;flex-direction:column;gap:8px;background:var(--panel);min-width:0;position:relative}
 .sub.feat{border-color:var(--b)}
 .sub .tag{position:absolute;top:-12px;left:14px;background:var(--b);color:#fff;font-family:var(--display);font-weight:800;font-size:12px;letter-spacing:.08em;text-transform:uppercase;padding:3px 10px;border-radius:999px}
@@ -225,10 +236,10 @@ details p{margin-top:8px;color:var(--muted)}
     <article class="opt k-b">
       <h3>B · Trzon (subskrypcja)</h3>
       <div class="big num">260 zł <small>/ kwartał</small></div>
-      <p class="pergame" style="margin:0"><b style="color:var(--b)">W trzonie ok. 10–13 zł za grę</b> (po zwrotach) · poza trzonem 20 zł za grę</p>
+      <p class="pergame" style="margin:0"><b style="color:var(--b)">W trzonie ok. 10–13 zł za grę</b> (po zwrotach) · gościnni 20 zł za grę</p>
       <ul class="how">
         <li>Ok. 8 osób z góry (trzon) opłaca wszystkie piątki.</li>
-        <li>Pozostali płacą 20 zł za wejście, a ta kasa wraca do trzonu.</li>
+        <li>Pozostali (gościnni) płacą 20 zł za grę, a ta kasa wraca do trzonu.</li>
       </ul>
       <ul class="pm">
         <li class="plus">Najtaniej dla regularnych: realnie ok. 470 zł za rok.</li>
@@ -269,26 +280,43 @@ details p{margin-top:8px;color:var(--muted)}
   <p>Płacisz jak za abonament, co kwartał. Pod spodem widać, skąd bierze się kasa trzonu i ile z niej wraca.</p>
   <div class="subs">
     <div class="sub">
+      <span class="who2">Trzon</span>
       <span class="price num" id="sq">260 zł <small>/ kwartał</small></span>
       <ul>
-        <li>4 przelewy w roku</li>
-        <li>zwrot co kwartał</li>
+        <li>4 przelewy w roku, zwrot co kwartał</li>
+        <li>pewne miejsce w każdy piątek</li>
         <li>łatwo wejść i wyjść w trakcie roku</li>
       </ul>
       <p class="net">Realnie po zwrotach: <b class="num" id="sqn">118 zł</b> za kwartał, czyli ok. <b class="num" id="syn">470 zł</b> za rok</p>
     </div>
+    <div class="sub guest">
+      <span class="who2">Gościnni</span>
+      <span class="price num">20 zł <small>/ gra</small></span>
+      <ul>
+        <li>płacisz tylko wtedy, gdy grasz (BLIK po grze)</li>
+        <li>zero zobowiązań, nic z góry</li>
+        <li>gra, jeśli jest wolne miejsce</li>
+      </ul>
+      <p class="net">Ich 20 zł trafia do kasy trzonu i obniża mu koszt.</p>
+    </div>
+  </div>
+  <div class="cmpwrap">
+    <table class="cmp" aria-label="Ile płaci trzon, a ile gościnni w roku">
+      <thead><tr><th>Jak często grasz</th><th>Trzon</th><th>Gościnni</th></tr></thead>
+      <tbody id="cmpBody"></tbody>
+    </table>
   </div>
   <div class="sim">
     <div class="ctrls">
       <div class="ctrl"><label for="core">Osób w trzonie: <span class="val num" id="coreV">8</span></label><input type="range" id="core" min="5" max="12" value="8"></div>
-      <div class="ctrl"><label for="drop">Wpadających na piątek: <span class="val num" id="dropV">4</span></label><input type="range" id="drop" min="0" max="8" value="4"></div>
+      <div class="ctrl"><label for="drop">Gościnnych na piątek: <span class="val num" id="dropV">4</span></label><input type="range" id="drop" min="0" max="8" value="4"></div>
       <div class="ctrl"><label for="played">Granych piątków w roku: <span class="val num" id="playedV">47</span></label><input type="range" id="played" min="36" max="52" value="47"></div>
     </div>
     <div class="pot" id="pot" aria-live="polite"></div>
     <div class="bigline">
       <div class="tile"><b class="num" id="tNet">470 zł</b><span>płaci rocznie 1 osoba z trzonu</span></div>
       <div class="tile"><b class="num" id="tGame">10 zł</b><span>za grę, jeśli grasz w każdy piątek</span></div>
-      <div class="tile"><b class="num" id="tWorst">940 zł</b><span>najgorzej, gdy nikt nie wpada</span></div>
+      <div class="tile"><b class="num" id="tWorst">940 zł</b><span>najgorzej, gdy nie ma gościnnych</span></div>
     </div>
   </div>
 </section>
@@ -338,7 +366,7 @@ details p{margin-top:8px;color:var(--muted)}
   <h2 id="pytania">Najczęstsze pytania</h2>
   <div class="faq">
     <details><summary>Czy umowa coś nas kosztuje, jeśli odwołamy?</summary><p>Nie. Odwołanie do środy rano jest darmowe, a faktura przychodzi raz w miesiącu tylko za piątki, które się odbyły. Ryzyko to 160 zł za jeden piątek, którego nie zdążymy odwołać.</p></details>
-    <details><summary>Trzon: skąd biorą się zwroty?</summary><p>Trzon wpłaca co kwartał z góry tyle, ile kosztowałyby wszystkie piątki w kwartale (13 × 160 zł). Do tej kasy wpadają też wejścia po 20 zł. Po opłaceniu faktur nadwyżka (odwołane piątki plus wejścia) wraca do trzonu po równo.</p></details>
+    <details><summary>Trzon: skąd biorą się zwroty?</summary><p>Trzon wpłaca co kwartał z góry tyle, ile kosztowałyby wszystkie piątki w kwartale (13 × 160 zł). Do tej kasy trafiają też wejścia gościnnych po 20 zł. Po opłaceniu faktur nadwyżka (odwołane piątki plus wejścia) wraca do trzonu po równo.</p></details>
     <details><summary>Trzon: a jak nie przyjdę?</summary><p>Twoje miejsce i tak jest opłacone, więc nic nie dopłacasz. Trzon opłaca się, gdy grasz regularnie, mniej więcej od 2–3 razy w miesiącu.</p></details>
     <details><summary>Trzon: czy mogę dołączyć albo odejść w trakcie roku?</summary><p>Tak. Dołączając płacisz za kwartały, które zostały. Odchodząc dostajesz zwrot za niewykorzystaną część.</p></details>
     <details><summary>Karnet: co jeśli nie wykorzystam wejść?</summary><p>Karnet jest ważny do końca roku umowy. Pieniądze, które zostaną w skarbonce na koniec roku, idą na kolejny rok (albo na piłki).</p></details>
@@ -364,15 +392,18 @@ details p{margin-top:8px;color:var(--muted)}
   // ---- Trzon pot: core prepays all 52 Fridays, drop-ins add 20 zł each, invoices are only for played Fridays; the rest goes back to the core.
   let trzonNet = 470;
   function pot(){
-    const c = +$('core').value, d = +$('drop').value, g = +$('played').value;
+    const c = +$('core').value, g = +$('played').value;
+    $('drop').max = String(14 - c);           // the court fits ~14 people
+    if (+$('drop').value > 14 - c) $('drop').value = String(14 - c);
+    const d = +$('drop').value;
     $('coreV').textContent = c; $('dropV').textContent = d; $('playedV').textContent = g;
     const prepay = WEEKS * HALL, drops = g * d * SINGLE, bills = g * HALL;
     const left = prepay + drops - bills, back = left / c, perHead = prepay / c;
     trzonNet = perHead - back;
     const max = prepay + drops;
     const rows = [
-      {l:`Wpłaty trzonu`, s:`${c} os. × ${zl0(perHead)}`, v:prepay, from:0, col:'var(--b)'},
-      {l:`Wejścia wpadających`, s:`${g} piątków × ${d} os. × 20 zł`, v:drops, from:prepay, col:'var(--c-fill)'},
+      {l:`Wpłaty trzonu`, s:`${c} os. × 4 kwartały × ${zl0(perHead/4)}`, v:prepay, from:0, col:'var(--b)'},
+      {l:`Wejścia gościnnych`, s:`${g} piątków × ${d} os. × 20 zł`, v:drops, from:prepay, col:'var(--c-fill)'},
       {l:`Faktury za halę`, s:`${g} piątków × 160 zł`, v:-bills, from:max-bills, col:'var(--warn)'},
       {l:`Zostaje i wraca do trzonu`, s:`${zl0(back)} na osobę`, v:left, from:0, col:'var(--ok)', sum:true},
     ];
@@ -386,6 +417,10 @@ details p{margin-top:8px;color:var(--muted)}
     $('tNet').textContent = zl0(trzonNet);
     $('tGame').textContent = zl(Math.round(trzonNet/g));
     $('tWorst').textContent = zl0(bills / c);
+    $('cmpBody').innerHTML = [[1,'1 raz w miesiącu'],[2,'2 razy w miesiącu'],[3,'3 razy w miesiącu'],[4,'w każdy piątek']].map(([m,l]) => {
+      const n = Math.round(g*m/4), t = trzonNet, s = n*SINGLE;
+      return `<tr><td>${l} <small style="color:var(--muted)">(${n} gier)</small></td><td class="${t<=s?'win':''}">${zl0(t)}</td><td class="${s<t?'win':''}">${zl0(s)}</td></tr>`;
+    }).join('');
     year(curM);
   }
   ['core','drop','played'].forEach(id => $(id).addEventListener('input', pot));
@@ -420,7 +455,7 @@ details p{margin-top:8px;color:var(--muted)}
       : `Im więcej osób, tym taniej.`) + ` Kto zapomni o BLIKu, za tego <b>płaci Krzysiek</b>.`;
     $('rb').innerHTML = `0 zł <small>dla trzonu</small>`;
     const drop = Math.max(0, n-8);
-    $('rsb').innerHTML = `Hala <b>już opłacona</b> z góry. Wpadający płacą po 20 zł${drop?` (dziś ok. ${drop} os.)`:''}, i ta kasa wraca do trzonu.`;
+    $('rsb').innerHTML = `Hala <b>już opłacona</b> z góry. Gościnni płacą po 20 zł${drop?` (dziś ok. ${drop} os.)`:''}, i ta kasa wraca do trzonu.`;
     $('rc').innerHTML = `${KARNET} zł <small>1 wejście</small>`;
     const gap = HALL - KARNET*n;
     $('rsc').innerHTML = gap > 0
@@ -439,7 +474,7 @@ details p{margin-top:8px;color:var(--muted)}
     const rows = [
       {k:'var(--a)', l:'A · Jak dotychczas', s:'160 zł ÷ obecni', v: g*HALL/AVG},
       {k:'var(--b)', l:'B · W trzonie', s:'subskrypcja minus zwroty', v: trzonNet},
-      {k:'color-mix(in srgb,var(--b) 40%,var(--bg))', l:'B · Poza trzonem', s:'20 zł za wejście', v: g*SINGLE},
+      {k:'color-mix(in srgb,var(--b) 40%,var(--bg))', l:'B · Gościnni', s:'20 zł za grę', v: g*SINGLE},
       {k:'var(--c-fill)', l:'C · Karnet', s:'15 zł za wejście', v: g*KARNET},
     ];
     const max = Math.max(...rows.map(r=>r.v), 1), min = Math.min(...rows.map(r=>r.v));
