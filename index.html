@@ -567,7 +567,7 @@ details p{margin-top:8px;color:var(--muted)}
     const rows = [
       {l:'Wejścia z karnetów', s:`${g} piątków × ${n} os. × 16 zł`, v:fromK, from:0, col:'var(--c-fill)'},
       {l:'Faktury za halę', s:`${g} piątków × 160 zł`, v:-bills, from:fromK-bills, col:'var(--warn)'},
-      {l: left >= 0 ? 'Zostaje w skarbonce' : 'Brakuje w skarbonce', s: left >= 0 ? 'na słabsze piątki i kolejny rok' : 'trzeba dopłacić albo podnieść cenę', v:left, from: left >= 0 ? 0 : 0, col: left >= 0 ? 'var(--ok)' : 'var(--warn)', sum:true},
+      {l: left >= 0 ? 'Zostaje w skarbonce' : 'Brakuje w skarbonce', s: left >= 0 ? 'na słabsze piątki, a po roku do decyzji' : 'trzeba dopłacić albo podnieść cenę', v:left, from: left >= 0 ? 0 : 0, col: left >= 0 ? 'var(--ok)' : 'var(--warn)', sum:true},
     ];
     $('kPot').innerHTML = rows.map(r =>
       `<div class="prow${r.sum?' sum':''}"><span class="l">${r.l}<small>${r.s}</small></span>`+
