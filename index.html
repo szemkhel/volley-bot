@@ -115,6 +115,9 @@ input[type=range]{width:100%;accent-color:var(--b);height:30px}
 .cmp td{font-variant-numeric:tabular-nums}
 .cmp td.win{color:var(--ok);font-weight:700}
 .cmp td.win::after{content:" ★"}
+.cmpcap{caption-side:top;text-align:left;padding:12px 12px 4px;font-size:15px;color:var(--muted)}
+.cmpcap b{color:var(--ink)}
+.cmp small{color:var(--muted);font-weight:400}
 .cmpwrap{overflow-x:auto;background:var(--panel);border:1px solid var(--line);border-radius:14px}
 .sub{border:2px solid var(--line);border-radius:16px;padding:16px;display:flex;flex-direction:column;gap:8px;background:var(--panel);min-width:0;position:relative}
 .sub.feat{border-color:var(--b)}
@@ -303,7 +306,8 @@ details p{margin-top:8px;color:var(--muted)}
   </div>
   <div class="cmpwrap">
     <table class="cmp" aria-label="Ile płaci trzon, a ile gościnni w roku">
-      <thead><tr><th>Jak często grasz</th><th>Trzon</th><th>Gościnni</th></tr></thead>
+      <caption class="cmpcap">Ile zapłacisz <b>przez cały rok</b>? Trzon płaci stałą kwotę, nawet jak opuszcza piątki. Gościnny płaci 20 zł za każdą grę.</caption>
+      <thead><tr><th>Jak często grasz</th><th>Jesteś w trzonie</th><th>Jesteś gościnnym</th></tr></thead>
       <tbody id="cmpBody"></tbody>
     </table>
   </div>
@@ -420,7 +424,7 @@ details p{margin-top:8px;color:var(--muted)}
     $('tWorst').textContent = zl0(bills / c);
     $('cmpBody').innerHTML = [[1,'1 raz w miesiącu'],[2,'2 razy w miesiącu'],[3,'3 razy w miesiącu'],[4,'w każdy piątek']].map(([m,l]) => {
       const n = Math.round(g*m/4), t = trzonNet, s = n*SINGLE;
-      return `<tr><td>${l} <small style="color:var(--muted)">(${n} gier)</small></td><td class="${t<=s?'win':''}">${zl0(t)}</td><td class="${s<t?'win':''}">${zl0(s)}</td></tr>`;
+      return `<tr><td>${l} <small>(${n} gier)</small></td><td class="${t<=s?'win':''}">${zl0(t)} rocznie<br><small>≈ ${zl0(t/n)} za grę</small></td><td class="${s<t?'win':''}">${zl0(s)} rocznie<br><small>${n} × 20 zł</small></td></tr>`;
     }).join('');
     year(curM);
   }
