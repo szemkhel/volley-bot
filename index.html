@@ -336,6 +336,54 @@ details p{margin-top:8px;color:var(--muted)}
   </div>
 </section>
 
+<section aria-labelledby="karnet">
+  <div class="eyebrow">Krok 3B · karnet od środka</div>
+  <div class="headrow">
+    <h2 id="karnet">Karnet i skarbonka</h2>
+    <div class="ctrl mini"><label for="kPlayed">Granych piątków w roku: <span class="val num" id="kPlayedV">52</span></label><input type="range" id="kPlayed" min="36" max="52" value="52"></div>
+  </div>
+  <p class="lead" style="max-width:none">Działa to tak: <b>karnet to 10 wejść za 160 zł</b>, czyli 16 zł za grę, bo 160 zł za halę dzielimy na 10 osób. Kto gra bez karnetu, płaci <b>20 zł za grę</b>. Gdy przyjdzie więcej niż 10 osób, nadwyżka idzie do <b>skarbonki</b>. Gdy przyjdzie mniej, skarbonka dopłaca brakującą kwotę do hali.</p>
+  <div class="subs">
+    <div class="sub k-c" style="border-color:var(--c-fill)">
+      <span class="who2">Z karnetem</span>
+      <div class="pricerow"><span class="price num" style="color:var(--c)">16 zł <small>/ gra</small></span>
+      <div class="ctrl mini"><label for="kPeople">Osób na piątek: <span class="val num" id="kPeopleV">10</span></label><input type="range" id="kPeople" min="6" max="14" value="10"></div></div>
+      <ul>
+        <li>płacisz 160 zł za 10 wejść, z góry</li>
+        <li>odbijasz 1 wejście za każdy piątek</li>
+        <li>karnet ważny do końca roku umowy</li>
+      </ul>
+      <p class="net">Bez zobowiązań na rok, kupujesz kolejny, gdy się skończy.</p>
+    </div>
+    <div class="sub guest">
+      <span class="who2">Bez karnetu</span>
+      <div class="pricerow"><span class="price num">20 zł <small>/ gra</small></span>
+      <div class="ctrl mini"><label for="kSingle">Z tego bez karnetu: <span class="val num" id="kSingleV">2</span></label><input type="range" id="kSingle" min="0" max="10" value="2"></div></div>
+      <ul>
+        <li>płacisz tylko wtedy, gdy grasz (BLIK po grze)</li>
+        <li>zero zobowiązań, nic z góry</li>
+        <li>4 zł więcej niż z karnetem</li>
+      </ul>
+      <p class="net">Te dodatkowe 4 zł też trafiają do skarbonki.</p>
+    </div>
+  </div>
+  <div class="cmpwrap">
+    <table class="cmp" aria-label="Ile płaci osoba z karnetem, a ile bez w roku">
+      <caption class="cmpcap">Ile zapłacisz <b>przez cały rok</b>? Z karnetem płacisz 16 zł za każdą grę, bez karnetu 20 zł.</caption>
+      <thead><tr><th>Jak często grasz</th><th>Z karnetem</th><th>Bez karnetu</th></tr></thead>
+      <tbody id="kCmpBody"></tbody>
+    </table>
+  </div>
+  <div class="sim">
+    <div class="pot" id="kPot" aria-live="polite"></div>
+    <div class="bigline">
+      <div class="tile" style="--b:var(--c)"><b class="num" id="kWeek">+8 zł</b><span>do skarbonki w zwykły piątek</span></div>
+      <div class="tile" style="--b:var(--c)"><b class="num" id="kYear">416 zł</b><span>w skarbonce po roku</span></div>
+      <div class="tile" style="--b:var(--c)"><b class="num" id="kWeak">−48 zł</b><span>dopłaca skarbonka, gdy przyjdzie tylko 7 osób</span></div>
+    </div>
+  </div>
+</section>
+
 <section aria-labelledby="piatek">
   <div class="eyebrow">Krok 4 · sprawdź sam</div>
   <h2 id="piatek">Słaby piątek: ile kto płaci?</h2>
@@ -391,7 +439,7 @@ details p{margin-top:8px;color:var(--muted)}
 
 <footer class="foot">
   <p><b>Głosujemy w ankiecie na grupie WhatsApp.</b> Ta strona tylko wyjaśnia opcje.</p>
-  <p>Wyliczenia są szacunkowe: wszystkie 52 piątki w roku (część może wypaść, gdy hala jest zajęta), średnio 10,5 osoby na grę (dane z czerwca–października 2026). W kroku 3 możesz zmienić te założenia suwakami.</p>
+  <p>Wyliczenia są szacunkowe: wszystkie 52 piątki w roku (część może wypaść, gdy hala jest zajęta), średnio 10,5 osoby na grę (dane z czerwca–października 2026). W krokach 3 i 3B możesz zmienić te założenia suwakami.</p>
 </footer>
 
 </div>
@@ -503,7 +551,39 @@ details p{margin-top:8px;color:var(--muted)}
   }
   btns.forEach(b => b.addEventListener('click', () => year(+b.dataset.m)));
 
-  sim(); pot();
+  // ---- Karnet + skarbonka: one entry = 160 zł / 10 players; players above 10 (and the 4 zł extra from singles) feed the skarbonka.
+  function kpot(){
+    const g = +$('kPlayed').value, n = +$('kPeople').value;
+    $('kSingle').max = String(n);
+    if (+$('kSingle').value > n) $('kSingle').value = String(n);
+    const s = +$('kSingle').value, k = n - s;
+    $('kPlayedV').textContent = g; $('kPeopleV').textContent = n; $('kSingleV').textContent = s;
+    const fromK = g*k*KARNET, fromS = g*s*SINGLE, bills = g*HALL, left = fromK + fromS - bills;
+    const max = Math.max(fromK + fromS, bills);
+    const rows = [
+      {l:'Wejścia z karnetów', s:`${g} piątków × ${k} os. × 16 zł`, v:fromK, from:0, col:'var(--c-fill)'},
+      {l:'Wejścia bez karnetu', s:`${g} piątków × ${s} os. × 20 zł`, v:fromS, from:fromK, col:'color-mix(in srgb,var(--b) 40%,var(--bg))'},
+      {l:'Faktury za halę', s:`${g} piątków × 160 zł`, v:-bills, from:fromK+fromS-bills, col:'var(--warn)'},
+      {l: left >= 0 ? 'Zostaje w skarbonce' : 'Brakuje w skarbonce', s: left >= 0 ? 'na słabsze piątki i kolejny rok' : 'trzeba dopłacić albo podnieść cenę', v:left, from: left >= 0 ? 0 : 0, col: left >= 0 ? 'var(--ok)' : 'var(--warn)', sum:true},
+    ];
+    $('kPot').innerHTML = rows.map(r =>
+      `<div class="prow${r.sum?' sum':''}"><span class="l">${r.l}<small>${r.s}</small></span>`+
+      `<div class="bt"><div class="bf" style="background:${r.col};left:${(Math.max(0,r.from)/max*100).toFixed(1)}%;width:${(Math.abs(r.v)/max*100).toFixed(1)}%"></div></div>`+
+      `<span class="v num"${r.sum&&r.v<0?' style="color:var(--warn)"':''}>${r.v<0?'−':(r.sum?'':'+')}${zl0(Math.abs(r.v))}</span></div>`).join('');
+    const week = k*KARNET + s*SINGLE - HALL;
+    $('kWeek').textContent = (week>=0?'+':'−') + zl0(Math.abs(week));
+    $('kWeek').nextElementSibling.textContent = week>=0 ? 'do skarbonki w taki piątek' : 'dopłaca skarbonka w taki piątek';
+    $('kYear').textContent = (left<0?'−':'') + zl0(Math.abs(left));
+    const weakN = 7, weak = HALL - Math.round(weakN * (k/n*KARNET + s/n*SINGLE));
+    $('kWeak').textContent = '−' + zl0(Math.max(0, weak));
+    $('kCmpBody').innerHTML = [[1,'1 raz w miesiącu'],[2,'2 razy w miesiącu'],[3,'3 razy w miesiącu'],[4,'w każdy piątek']].map(([m,l]) => {
+      const c = Math.round(g*m/4), kk = Math.ceil(c/10);
+      return `<tr><td>${l} <small>(${c} gier w roku)</small></td><td class="win">${zl0(c*KARNET)} rocznie <small>(${kk} ${kk===1?'karnet':kk<5?'karnety':'karnetów'}, 16 zł za grę)</small></td><td>${zl0(c*SINGLE)} rocznie <small>(20 zł za grę)</small></td></tr>`;
+    }).join('');
+  }
+  ['kPlayed','kPeople','kSingle'].forEach(id => $(id).addEventListener('input', kpot));
+
+  sim(); pot(); kpot();
 })();
 </script>
 </body>
