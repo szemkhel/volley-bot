@@ -1,0 +1,471 @@
+<!doctype html>
+<html lang="pl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Jak płacimy za halę?</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,500..900&family=Atkinson+Hyperlegible:wght@400;700&display=swap">
+<style>
+/* Layout: one column that widens to tablet size; each "Krok" is a set; sliders are the hands-on moments. */
+:root{
+  --bg:#f6f1e7;          /* maple hall floor */
+  --panel:#fffdf8;
+  --ink:#1b2333;
+  --muted:#5d6577;
+  --line:#e2d9c6;
+  --court:#e9dcc2;
+  --courtline:#ffffff;
+  --a:#5b6b84;           /* Jak dotychczas: slate */
+  --b:#1f4fa0;           /* Trzon: Mikasa blue */
+  --c:#a87300;           /* Karnet: Mikasa yellow, darkened for text */
+  --c-fill:#f5c400;
+  --warn:#c2412d;
+  --ok:#2f7d4a;
+  --display:"Archivo",system-ui,sans-serif;
+  --body:"Atkinson Hyperlegible",system-ui,sans-serif;
+  color-scheme:light;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --bg:#121722;--panel:#1a2130;--ink:#eef1f6;--muted:#a3abbd;--line:#2b3446;--court:#232c3d;--courtline:#3a4660;
+  --a:#9aabc6;--b:#7ea6ec;--c:#f5c400;--c-fill:#f5c400;--warn:#f08a74;--ok:#6cc58b;color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#121722;--panel:#1a2130;--ink:#eef1f6;--muted:#a3abbd;--line:#2b3446;--court:#232c3d;--courtline:#3a4660;
+  --a:#9aabc6;--b:#7ea6ec;--c:#f5c400;--c-fill:#f5c400;--warn:#f08a74;--ok:#6cc58b;color-scheme:dark}
+
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--ink);font-family:var(--body);font-size:17px;line-height:1.5;margin:0;-webkit-text-size-adjust:100%}
+.wrap{max-width:1040px;margin:0 auto;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:28px 64px;display:flex;flex-direction:column;gap:60px}
+h1,h2,h3{font-family:var(--display);font-stretch:112%;line-height:1.05;margin:0;text-wrap:balance}
+h1{font-size:clamp(40px,8vw,76px);font-weight:900;letter-spacing:-.01em}
+h2{font-size:clamp(26px,4.6vw,40px);font-weight:800}
+h3{font-size:22px;font-weight:800}
+p{margin:0}
+.eyebrow{font-family:var(--display);font-stretch:125%;font-size:13px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--muted)}
+.lead{font-size:20px;color:var(--muted);max-width:36em}
+section{display:flex;flex-direction:column;gap:18px}
+.num{font-variant-numeric:tabular-nums}
+
+.hero{display:flex;flex-direction:column;gap:14px}
+.ball{width:64px;height:64px;animation:spin 9s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+.facts{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}
+.fact{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:14px 16px;display:flex;flex-direction:column;gap:4px;min-width:0}
+.fact b{font-family:var(--display);font-stretch:112%;font-size:24px;font-weight:900;line-height:1.1}
+.fact span{color:var(--muted);font-size:15px}
+.fact s{color:var(--muted);font-size:15px;margin-left:6px;font-family:var(--body);font-weight:400}
+
+.week{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:6px}
+.day{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:10px 8px;display:flex;flex-direction:column;gap:6px;min-width:0}
+.day .d{font-family:var(--display);font-weight:900;font-size:18px}
+.day p{font-size:14px;line-height:1.3;color:var(--muted)}
+.day.hot{border-color:var(--warn);box-shadow:0 0 0 2px color-mix(in srgb,var(--warn) 25%,transparent)}
+.day.hot .d{color:var(--warn)}
+.day.game{background:var(--b);border-color:var(--b)}
+.day.game .d,.day.game p{color:#fff}
+.note{background:color-mix(in srgb,var(--warn) 10%,var(--panel));border-left:4px solid var(--warn);padding:12px 14px;border-radius:0 12px 12px 0}
+
+/* option cards */
+.opts{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px;align-items:start}
+.opt{background:var(--panel);border:1px solid var(--line);border-top:6px solid var(--k);border-radius:14px;padding:16px;display:flex;flex-direction:column;gap:12px;min-width:0}
+.opt h3{color:var(--k)}
+.opt .big{font-family:var(--display);font-stretch:112%;font-weight:900;font-size:30px;line-height:1}
+.opt .big small{font-size:15px;font-weight:600;color:var(--muted)}
+.opt .how{font-size:15.5px;display:flex;flex-direction:column;gap:4px;margin:0;padding-left:18px}
+.pm{display:flex;flex-direction:column;gap:6px;margin:0;padding:0;list-style:none;font-size:15px;line-height:1.35}
+.pm li{display:grid;grid-template-columns:22px minmax(0,1fr);gap:6px;align-items:start;padding:6px 8px;border-radius:8px}
+.pm li::before{font-family:var(--display);font-weight:900;font-size:17px;line-height:1.2;text-align:center}
+.pm .plus{background:color-mix(in srgb,var(--ok) 11%,var(--panel));color:var(--ink)}
+.pm .plus::before{content:"+";color:var(--ok)}
+.pm .minus{background:color-mix(in srgb,var(--warn) 10%,var(--panel))}
+.pm .minus::before{content:"−";color:var(--warn)}
+.who{font-size:14px;color:var(--muted);border-top:1px dashed var(--line);padding-top:8px}
+.who b{color:var(--ink)}
+.k-a{--k:var(--a)} .k-b{--k:var(--b)} .k-c{--k:var(--c)}
+
+/* panels */
+.sim{background:var(--panel);border:1px solid var(--line);border-radius:18px;padding:18px;display:flex;flex-direction:column;gap:18px}
+.court{width:100%;max-width:560px;height:auto;display:block;margin:0 auto}
+.court .dot{transition:transform .5s cubic-bezier(.3,1.4,.5,1),opacity .4s}
+.court .dot.out{opacity:.22}
+.ctrl{display:flex;flex-direction:column;gap:6px;min-width:0}
+.ctrl label{font-weight:700}
+.ctrl .val{font-family:var(--display);font-weight:900;font-size:26px;color:var(--b)}
+.ctrls{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px}
+input[type=range]{width:100%;accent-color:var(--b);height:30px}
+.res{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
+.r{border-radius:12px;padding:12px;background:color-mix(in srgb,var(--k) 9%,var(--panel));border:1px solid color-mix(in srgb,var(--k) 35%,var(--line));display:flex;flex-direction:column;gap:6px;min-width:0}
+.r .t{font-family:var(--display);font-weight:800;color:var(--k);font-size:16px}
+.r .p{font-family:var(--display);font-stretch:112%;font-weight:900;font-size:30px;line-height:1;transition:color .3s}
+.r .p small{font-size:14px;font-weight:600;color:var(--muted)}
+.r .s{font-size:14px;line-height:1.35;color:var(--muted)}
+.r .s b{color:var(--ink)}
+.p.bad{color:var(--warn)}
+
+/* subscription */
+.subs{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
+.sub{border:2px solid var(--line);border-radius:16px;padding:16px;display:flex;flex-direction:column;gap:8px;background:var(--panel);min-width:0;position:relative}
+.sub.feat{border-color:var(--b)}
+.sub .tag{position:absolute;top:-12px;left:14px;background:var(--b);color:#fff;font-family:var(--display);font-weight:800;font-size:12px;letter-spacing:.08em;text-transform:uppercase;padding:3px 10px;border-radius:999px}
+.sub .price{font-family:var(--display);font-stretch:112%;font-weight:900;font-size:40px;line-height:1;color:var(--b)}
+.sub .price small{font-size:16px;color:var(--muted);font-weight:600}
+.sub ul{margin:0;padding-left:18px;font-size:15.5px;display:flex;flex-direction:column;gap:3px}
+.sub .net{border-top:1px dashed var(--line);padding-top:8px;font-size:15px}
+.sub .net b{font-family:var(--display);font-size:22px;font-weight:900}
+
+/* pot waterfall */
+.pot{display:flex;flex-direction:column;gap:8px}
+.prow{display:grid;grid-template-columns:minmax(0,230px) minmax(0,1fr) 96px;gap:10px;align-items:center}
+.prow .l{font-size:15px;line-height:1.25}
+.prow .l small{display:block;color:var(--muted);font-size:13px}
+.prow .bt{position:relative;height:28px}
+.prow .bf{position:absolute;top:0;bottom:0;border-radius:6px;transition:left .5s,width .5s}
+.prow .v{font-family:var(--display);font-weight:900;font-size:19px;text-align:right}
+.prow.sum{border-top:2px solid var(--ink);padding-top:8px}
+.prow.sum .v{color:var(--ok)}
+.bigline{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
+.tile{background:color-mix(in srgb,var(--b) 8%,var(--panel));border-radius:12px;padding:12px;display:flex;flex-direction:column;gap:2px;min-width:0}
+.tile b{font-family:var(--display);font-stretch:112%;font-size:28px;font-weight:900;color:var(--b);line-height:1.05}
+.tile span{font-size:14px;color:var(--muted)}
+
+/* year calc */
+.seg{display:flex;gap:6px;flex-wrap:wrap}
+.seg button{font:inherit;font-weight:700;border:2px solid var(--line);background:var(--panel);color:var(--ink);border-radius:999px;padding:9px 16px;cursor:pointer;min-height:44px}
+.seg button[aria-pressed="true"]{background:var(--b);border-color:var(--b);color:#fff}
+.seg button:focus-visible,input:focus-visible,summary:focus-visible{outline:3px solid var(--c-fill);outline-offset:2px}
+.bars{display:flex;flex-direction:column;gap:12px}
+.bar{display:grid;grid-template-columns:170px minmax(0,1fr) 90px;gap:10px;align-items:center}
+.bar .l{font-weight:700;font-size:15px;line-height:1.2}
+.bar .l small{display:block;font-weight:400;color:var(--muted);font-size:13px}
+.track{height:28px;background:color-mix(in srgb,var(--line) 60%,transparent);border-radius:7px;overflow:hidden}
+.fill{height:100%;width:0;background:var(--k);border-radius:7px;transition:width .6s cubic-bezier(.2,.9,.3,1)}
+.bar .v{font-family:var(--display);font-weight:900;font-size:20px;text-align:right}
+.bar.best .v::after{content:" ★";color:var(--ok)}
+.pergame{font-size:15px;color:var(--muted)}
+
+details{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:12px 16px}
+summary{font-weight:700;cursor:pointer}
+details p{margin-top:8px;color:var(--muted)}
+.faq{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;align-items:start}
+.foot{font-size:14px;color:var(--muted);border-top:1px solid var(--line);padding-top:16px;display:flex;flex-direction:column;gap:6px}
+
+@media (min-width:900px){ body{font-size:18px} }
+@media (max-width:860px){
+  .opts{grid-template-columns:1fr}
+  .facts{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .faq{grid-template-columns:1fr}
+}
+@media (max-width:640px){
+  .res,.ctrls,.subs,.bigline{grid-template-columns:1fr}
+  .bar{grid-template-columns:110px minmax(0,1fr) 72px}
+  .prow{grid-template-columns:minmax(0,1fr) 84px}
+  .prow .bt{display:none}
+  .fact b{font-size:20px}
+  .week{gap:4px}.day{padding:8px 5px}.day p{font-size:12px}.day .d{font-size:15px}
+}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+</style>
+</head>
+<body>
+
+<div class="wrap">
+
+<header class="hero">
+  <svg class="ball" viewBox="0 0 64 64" aria-hidden="true">
+    <circle cx="32" cy="32" r="30" fill="#f5c400" stroke="#1f4fa0" stroke-width="3"/>
+    <path d="M32 2c-8 10-8 30 0 60M4 22c14 2 34 10 50 30M10 52c6-14 22-30 50-30" fill="none" stroke="#1f4fa0" stroke-width="3"/>
+  </svg>
+  <div class="eyebrow">Rajszew team 🏐 · piątki 20:30–22:30</div>
+  <h1>Jak płacimy za halę?</h1>
+  <p class="lead">Są trzy sposoby rozliczania i wybieramy jeden na cały rok umowy. Poniżej każdy z plusami i minusami, a suwaki pokażą, ile zapłacisz Ty.</p>
+</header>
+
+<section aria-labelledby="umowa">
+  <div class="eyebrow">Krok 1</div>
+  <h2 id="umowa">Co daje umowa z halą</h2>
+  <div class="facts">
+    <div class="fact"><b class="num">160 zł <s>200 zł</s></b><span>za jeden piątek (2 godziny)</span></div>
+    <div class="fact"><b>Stały termin</b><span>bez polowania na wolne sektory na stronie</span></div>
+    <div class="fact"><b>Odwołanie za 0 zł</b><span>do środy rano, gdy jest nas za mało</span></div>
+    <div class="fact"><b>Faktura po miesiącu</b><span>tylko za piątki, które naprawdę graliśmy</span></div>
+  </div>
+  <div class="week" aria-label="Tydzień z umową">
+    <div class="day"><span class="d">Pon</span><p>ankieta + przypominajka</p></div>
+    <div class="day hot"><span class="d">Wt</span><p>głosujesz do końca dnia</p></div>
+    <div class="day hot"><span class="d">Śr</span><p>rano: gramy czy odwołujemy</p></div>
+    <div class="day"><span class="d">Czw</span><p>za późno, by odwołać</p></div>
+    <div class="day game"><span class="d">Pt</span><p>gramy 🏐</p></div>
+  </div>
+  <p class="note">Umowę podpisuje <b>Krzysiek</b>, i tylko on nie może się z niej wypisać. Jeśli we wtorek zapisze się 10 osób, a w piątek przyjdzie 6, hala i tak bierze 160 zł. Modele różnią się tym, <b>kto wtedy dopłaca</b>.</p>
+</section>
+
+<section aria-labelledby="modele">
+  <div class="eyebrow">Krok 2</div>
+  <h2 id="modele">Trzy sposoby: plusy i minusy</h2>
+  <div class="opts">
+    <article class="opt k-a">
+      <h3>A · Jak dotychczas</h3>
+      <div class="big num">160 zł ÷ obecni</div>
+      <ul class="how">
+        <li>Po grze dzielimy 160 zł na tych, którzy przyszli.</li>
+        <li>Każdy wysyła BLIKa Krzyśkowi.</li>
+      </ul>
+      <ul class="pm">
+        <li class="plus">Nic nie płacisz z góry, zero zobowiązań.</li>
+        <li class="plus">Płacisz tylko wtedy, gdy grasz.</li>
+        <li class="plus">Wszyscy już to znają.</li>
+        <li class="minus">Cena skacze od ok. 11 do 27 zł, zależnie od frekwencji.</li>
+        <li class="minus">Kto się zapisał i nie przyszedł, nie płaci. Płacą za niego obecni.</li>
+        <li class="minus">Krzysiek wykłada za fakturę i goni BLIKi od kilkunastu osób.</li>
+        <li class="minus">Nikt nie ma pewnego miejsca.</li>
+      </ul>
+      <p class="who">Słaby piątek: <b>płacą obecni</b>, a niezapłacone BLIKi pokrywa <b>Krzysiek</b>.</p>
+    </article>
+    <article class="opt k-b">
+      <h3>B · Trzon (subskrypcja)</h3>
+      <div class="big num">260 zł <small>/ kwartał</small></div>
+      <p class="who" style="border:0;padding:0">albo <b>1 040 zł / rok</b> jednym przelewem</p>
+      <ul class="how">
+        <li>Ok. 8 osób z góry opłaca wszystkie piątki.</li>
+        <li>Pozostali płacą 20 zł za wejście, a ta kasa wraca do trzonu.</li>
+      </ul>
+      <ul class="pm">
+        <li class="plus">Najtaniej dla regularnych: realnie ok. 470 zł za rok.</li>
+        <li class="plus">Hala opłacona z góry, nikt nie kredytuje faktury.</li>
+        <li class="plus">Pewne miejsce w każdy piątek.</li>
+        <li class="plus">Przy 8 opłaconych osobach we wtorek nie ma czego liczyć: gramy.</li>
+        <li class="minus">Trzeba zapłacić z góry 260 zł albo 1 040 zł.</li>
+        <li class="minus">Gdy często opuszczasz piątki, przepłacasz.</li>
+        <li class="minus">Trzeba znaleźć min. 6–8 chętnych.</li>
+        <li class="minus">Zwroty trzeba liczyć co kwartał.</li>
+      </ul>
+      <p class="who">Słaby piątek: <b>hala już opłacona</b>, a trzon dostanie po prostu mniejszy zwrot.</p>
+    </article>
+    <article class="opt k-c">
+      <h3>C · Karnet</h3>
+      <div class="big num">150 zł <small>za 10 wejść</small></div>
+      <ul class="how">
+        <li>Kupujesz karnet i odbijasz 1 wejście za każdy piątek.</li>
+        <li>Bez karnetu płacisz 20 zł za wejście.</li>
+      </ul>
+      <ul class="pm">
+        <li class="plus">Stała cena 15 zł, bez względu na frekwencję.</li>
+        <li class="plus">Bez deklaracji na cały rok, wystarczy 150 zł na raz.</li>
+        <li class="plus">Pieniądze wpływają z góry, więc Krzysiek nie kredytuje.</li>
+        <li class="minus">Dla grających prawie zawsze drożej niż trzon.</li>
+        <li class="minus">Ktoś musi pilnować, ile kto ma wejść.</li>
+        <li class="minus">Seria słabych piątków może opróżnić skarbonkę.</li>
+        <li class="minus">Nikt nie ma pierwszeństwa.</li>
+      </ul>
+      <p class="who">Słaby piątek: brakującą kwotę pokrywa <b>skarbonka</b> z nadwyżek.</p>
+    </article>
+  </div>
+</section>
+
+<section aria-labelledby="trzon">
+  <div class="eyebrow">Krok 3 · trzon od środka</div>
+  <h2 id="trzon">Trzon jako subskrypcja</h2>
+  <p>Płacisz jak za abonament: raz na rok albo co kwartał. Pod spodem widać, skąd bierze się kasa trzonu i ile z niej wraca.</p>
+  <div class="subs">
+    <div class="sub">
+      <span class="price num" id="sq">260 zł <small>/ kwartał</small></span>
+      <ul>
+        <li>4 przelewy w roku</li>
+        <li>zwrot co kwartał</li>
+        <li>łatwo wejść i wyjść w trakcie roku</li>
+      </ul>
+      <p class="net">Realnie po zwrotach: <b class="num" id="sqn">118 zł</b> za kwartał</p>
+    </div>
+    <div class="sub feat">
+      <span class="tag">Jeden przelew</span>
+      <span class="price num" id="sy">1 040 zł <small>/ rok</small></span>
+      <ul>
+        <li>1 przelew na cały rok</li>
+        <li>zwrot na koniec roku</li>
+        <li>zero pilnowania terminów wpłat</li>
+      </ul>
+      <p class="net">Realnie po zwrocie: <b class="num" id="syn">470 zł</b> za rok</p>
+    </div>
+  </div>
+  <div class="sim">
+    <div class="ctrls">
+      <div class="ctrl"><label for="core">Osób w trzonie: <span class="val num" id="coreV">8</span></label><input type="range" id="core" min="5" max="12" value="8"></div>
+      <div class="ctrl"><label for="drop">Wpadających na piątek: <span class="val num" id="dropV">4</span></label><input type="range" id="drop" min="0" max="8" value="4"></div>
+      <div class="ctrl"><label for="played">Granych piątków w roku: <span class="val num" id="playedV">47</span></label><input type="range" id="played" min="36" max="52" value="47"></div>
+    </div>
+    <div class="pot" id="pot" aria-live="polite"></div>
+    <div class="bigline">
+      <div class="tile"><b class="num" id="tNet">470 zł</b><span>płaci rocznie 1 osoba z trzonu</span></div>
+      <div class="tile"><b class="num" id="tGame">10 zł</b><span>za grę, jeśli grasz w każdy piątek</span></div>
+      <div class="tile"><b class="num" id="tWorst">940 zł</b><span>najgorzej, gdy nikt nie wpada</span></div>
+    </div>
+  </div>
+</section>
+
+<section aria-labelledby="piatek">
+  <div class="eyebrow">Krok 4 · sprawdź sam</div>
+  <h2 id="piatek">Słaby piątek: ile kto płaci?</h2>
+  <p>We wtorek zapisało się 10 osób, więc nie odwołaliśmy. Ile przyszło w piątek?</p>
+  <div class="sim">
+    <svg class="court" id="court" viewBox="0 0 360 170" role="img" aria-label="Boisko z graczami obecnymi w piątek">
+      <rect x="2" y="2" width="356" height="166" rx="10" style="fill:var(--court)"/>
+      <rect x="20" y="20" width="320" height="130" style="fill:none;stroke:var(--courtline)" stroke-width="3"/>
+      <line x1="180" y1="12" x2="180" y2="158" style="stroke:var(--ink)" stroke-width="4"/>
+      <line x1="127" y1="20" x2="127" y2="150" style="stroke:var(--courtline)" stroke-width="2"/>
+      <line x1="233" y1="20" x2="233" y2="150" style="stroke:var(--courtline)" stroke-width="2"/>
+      <g id="dots"></g>
+    </svg>
+    <div class="ctrl">
+      <label for="came">Przyszło: <span class="val num" id="cameV">6</span> osób</label>
+      <input type="range" id="came" min="4" max="14" value="6">
+    </div>
+    <div class="res">
+      <div class="r k-a"><span class="t">A · Jak dotychczas</span><span class="p num" id="ra"></span><span class="s" id="rsa"></span></div>
+      <div class="r k-b"><span class="t">B · Trzon</span><span class="p num" id="rb"></span><span class="s" id="rsb"></span></div>
+      <div class="r k-c"><span class="t">C · Karnet</span><span class="p num" id="rc"></span><span class="s" id="rsc"></span></div>
+    </div>
+  </div>
+</section>
+
+<section aria-labelledby="rok">
+  <div class="eyebrow">Krok 5 · sprawdź sam</div>
+  <h2 id="rok">Ile zapłacisz przez rok?</h2>
+  <p>Ile razy w miesiącu zwykle grasz?</p>
+  <div class="seg" role="group" aria-label="Ile razy w miesiącu grasz">
+    <button type="button" id="m1" data-m="1" aria-pressed="false">1 raz</button>
+    <button type="button" id="m2" data-m="2" aria-pressed="false">2 razy</button>
+    <button type="button" id="m3" data-m="3" aria-pressed="true">3 razy</button>
+    <button type="button" id="m4" data-m="4" aria-pressed="false">prawie zawsze</button>
+  </div>
+  <div class="sim">
+    <div class="bars" id="bars"></div>
+    <p class="pergame" id="pergame"></p>
+  </div>
+</section>
+
+<section aria-labelledby="pytania">
+  <h2 id="pytania">Najczęstsze pytania</h2>
+  <div class="faq">
+    <details><summary>Czy umowa coś nas kosztuje, jeśli odwołamy?</summary><p>Nie. Odwołanie do środy rano jest darmowe, a faktura przychodzi raz w miesiącu tylko za piątki, które się odbyły. Ryzyko to 160 zł za jeden piątek, którego nie zdążymy odwołać.</p></details>
+    <details><summary>Trzon: skąd biorą się zwroty?</summary><p>Trzon wpłaca z góry tyle, ile kosztowałyby wszystkie 52 piątki. Do tej kasy wpadają też wejścia po 20 zł. Po opłaceniu faktur nadwyżka (odwołane piątki plus wejścia) wraca do trzonu po równo.</p></details>
+    <details><summary>Trzon: a jak nie przyjdę?</summary><p>Twoje miejsce i tak jest opłacone, więc nic nie dopłacasz. Trzon opłaca się, gdy grasz regularnie, mniej więcej od 2–3 razy w miesiącu.</p></details>
+    <details><summary>Trzon: czy mogę dołączyć albo odejść w trakcie roku?</summary><p>Tak. Dołączając płacisz za kwartały, które zostały. Odchodząc dostajesz zwrot za niewykorzystaną część.</p></details>
+    <details><summary>Karnet: co jeśli nie wykorzystam wejść?</summary><p>Karnet jest ważny do końca roku umowy. Pieniądze, które zostaną w skarbonce na koniec roku, idą na kolejny rok (albo na piłki).</p></details>
+    <details><summary>Co się nie zmienia w żadnym modelu?</summary><p>Głosujemy w ankiecie <b>do wtorku do końca dnia</b>. Bez głosów nie wiemy, czy gramy, i to jest największy problem, niezależnie od sposobu płacenia.</p></details>
+  </div>
+</section>
+
+<footer class="foot">
+  <p><b>Głosujemy w ankiecie na grupie WhatsApp.</b> Ta strona tylko wyjaśnia opcje.</p>
+  <p>Wyliczenia są szacunkowe: 52 piątki w roku, z czego ok. 47 granych, średnio 10,5 osoby na grę (dane z czerwca–października 2026). W kroku 3 możesz zmienić te założenia suwakami.</p>
+</footer>
+
+</div>
+
+<script>
+(function(){
+  const HALL = 160, WEEKS = 52, SIGNED = 10, AVG = 10.5, SINGLE = 20, KARNET = 15;
+  const $ = id => document.getElementById(id);
+  const fmt = (n, d) => n.toLocaleString('pl-PL', {minimumFractionDigits: d, maximumFractionDigits: d});
+  const zl = n => fmt(Math.round(n*100)/100, Number.isInteger(Math.round(n*100)/100) ? 0 : 2) + ' zł';
+  const zl0 = n => fmt(Math.round(n), 0) + ' zł';
+
+  // ---- Trzon pot: core prepays all 52 Fridays, drop-ins add 20 zł each, invoices are only for played Fridays; the rest goes back to the core.
+  let trzonNet = 470;
+  function pot(){
+    const c = +$('core').value, d = +$('drop').value, g = +$('played').value;
+    $('coreV').textContent = c; $('dropV').textContent = d; $('playedV').textContent = g;
+    const prepay = WEEKS * HALL, drops = g * d * SINGLE, bills = g * HALL;
+    const left = prepay + drops - bills, back = left / c, perHead = prepay / c;
+    trzonNet = perHead - back;
+    const max = prepay + drops;
+    const rows = [
+      {l:`Wpłaty trzonu`, s:`${c} os. × ${zl0(perHead)}`, v:prepay, from:0, col:'var(--b)'},
+      {l:`Wejścia wpadających`, s:`${g} piątków × ${d} os. × 20 zł`, v:drops, from:prepay, col:'var(--c-fill)'},
+      {l:`Faktury za halę`, s:`${g} piątków × 160 zł`, v:-bills, from:max-bills, col:'var(--warn)'},
+      {l:`Zostaje i wraca do trzonu`, s:`${zl0(back)} na osobę`, v:left, from:0, col:'var(--ok)', sum:true},
+    ];
+    $('pot').innerHTML = rows.map(r =>
+      `<div class="prow${r.sum?' sum':''}"><span class="l">${r.l}<small>${r.s}</small></span>`+
+      `<div class="bt"><div class="bf" style="background:${r.col};left:${(r.from/max*100).toFixed(1)}%;width:${(Math.abs(r.v)/max*100).toFixed(1)}%"></div></div>`+
+      `<span class="v num">${r.v<0?'−':(r.sum?'':'+')}${zl0(Math.abs(r.v))}</span></div>`).join('');
+    $('sq').innerHTML = `${zl0(perHead/4)} <small>/ kwartał</small>`;
+    $('sy').innerHTML = `${zl0(perHead)} <small>/ rok</small>`;
+    $('sqn').textContent = zl0(trzonNet/4);
+    $('syn').textContent = zl0(trzonNet);
+    $('tNet').textContent = zl0(trzonNet);
+    $('tGame').textContent = zl(Math.round(trzonNet/g));
+    $('tWorst').textContent = zl0(bills / c);
+    year(curM);
+  }
+  ['core','drop','played'].forEach(id => $(id).addEventListener('input', pot));
+
+  // ---- Weak Friday court
+  const dotsG = $('dots'), ns = 'http://www.w3.org/2000/svg', pos = [];
+  for (let side=0; side<2; side++) for (let i=0;i<7;i++){
+    const col = i%3, row = Math.floor(i/3);
+    pos.push([(side?210:54) + col*48 + (row===2?24:0), 46 + row*40]);
+  }
+  const order = []; for (let i=0;i<7;i++) order.push(i, i+7);
+  const dots = order.map((p, idx) => {
+    const g = document.createElementNS(ns,'g'); g.setAttribute('class','dot');
+    const c = document.createElementNS(ns,'circle'); c.setAttribute('r','13');
+    c.setAttribute('cx', pos[p][0]); c.setAttribute('cy', pos[p][1]);
+    g.appendChild(c); dotsG.appendChild(g); return {g, c, idx};
+  });
+  function sim(){
+    const n = +$('came').value;
+    $('cameV').textContent = n;
+    dots.forEach(d => {
+      const present = d.idx < n, signedUp = d.idx < SIGNED;
+      d.g.classList.toggle('out', !present);
+      d.c.style.fill = present ? 'var(--b)' : (signedUp ? 'var(--warn)' : 'var(--muted)');
+      d.g.style.transform = present ? 'translateY(0)' : 'translateY(6px)';
+    });
+    const a = HALL/n;
+    $('ra').textContent = zl(a); $('ra').classList.toggle('bad', a > SINGLE);
+    const missing = Math.max(0, SIGNED - n);
+    $('rsa').innerHTML = (missing
+      ? `${missing} zapisanych nie przyszło i nic nie płaci. <b>Obecni płacą za nich.</b>`
+      : `Im więcej osób, tym taniej.`) + ` Kto zapomni o BLIKu, za tego <b>płaci Krzysiek</b>.`;
+    $('rb').innerHTML = `0 zł <small>dla trzonu</small>`;
+    const drop = Math.max(0, n-8);
+    $('rsb').innerHTML = `Hala <b>już opłacona</b> z góry. Wpadający płacą po 20 zł${drop?` (dziś ok. ${drop} os.)`:''}, i ta kasa wraca do trzonu.`;
+    $('rc').innerHTML = `${KARNET} zł <small>1 wejście</small>`;
+    const gap = HALL - KARNET*n;
+    $('rsc').innerHTML = gap > 0
+      ? `Każdy płaci tyle samo. Brakujące <b>${zl0(gap)}</b> dokłada <b>skarbonka</b>.`
+      : `Każdy płaci tyle samo. Nadwyżka <b>${zl0(-gap)}</b> idzie <b>do skarbonki</b>.`;
+  }
+  $('came').addEventListener('input', sim);
+
+  // ---- Yearly cost by how often you play
+  let curM = 3;
+  const btns = [...document.querySelectorAll('.seg button')];
+  function year(m){
+    curM = m;
+    btns.forEach(b => b.setAttribute('aria-pressed', String(+b.dataset.m === m)));
+    const g = Math.round(+$('played').value * m/4);
+    const rows = [
+      {k:'var(--a)', l:'A · Jak dotychczas', s:'160 zł ÷ obecni', v: g*HALL/AVG},
+      {k:'var(--b)', l:'B · W trzonie', s:'subskrypcja minus zwroty', v: trzonNet},
+      {k:'color-mix(in srgb,var(--b) 40%,var(--bg))', l:'B · Poza trzonem', s:'20 zł za wejście', v: g*SINGLE},
+      {k:'var(--c-fill)', l:'C · Karnet', s:'15 zł za wejście', v: g*KARNET},
+    ];
+    const max = Math.max(...rows.map(r=>r.v), 1), min = Math.min(...rows.map(r=>r.v));
+    $('bars').innerHTML = rows.map(r =>
+      `<div class="bar${r.v===min?' best':''}"><span class="l">${r.l}<small>${r.s}</small></span>`+
+      `<div class="track"><div class="fill" style="--k:${r.k}" data-w="${(r.v/max*100).toFixed(1)}"></div></div>`+
+      `<span class="v num">${zl0(r.v)}</span></div>`).join('');
+    requestAnimationFrame(() => requestAnimationFrame(() =>
+      document.querySelectorAll('#bars .fill').forEach(f => f.style.width = f.dataset.w + '%')));
+    $('pergame').textContent = `To ok. ${g} gier w roku. W trzonie wychodzi ok. ${zl(Math.round(trzonNet/g))} za grę, bo subskrypcja kosztuje tyle samo, niezależnie od tego, ile grasz. ★ = najtaniej dla Ciebie.`;
+  }
+  btns.forEach(b => b.addEventListener('click', () => year(+b.dataset.m)));
+
+  sim(); pot();
+})();
+</script>
+</body>
+</html>
