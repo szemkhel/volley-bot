@@ -245,7 +245,7 @@ details p{margin-top:8px;color:var(--muted)}
         <li>Pozostali (gościnni) płacą 20 zł za grę, a ta kasa wraca do trzonu.</li>
       </ul>
       <ul class="pm">
-        <li class="plus">Najtaniej dla regularnych: realnie ok. 470 zł za rok.</li>
+        <li class="plus">Najtaniej dla regularnych: realnie ok. 520 zł za rok.</li>
         <li class="plus">Hala opłacona z góry, nikt nie kredytuje faktury.</li>
         <li class="plus">Pewne miejsce w każdy piątek.</li>
         <li class="plus">Przy 8 opłaconych osobach we wtorek nie ma czego liczyć: gramy.</li>
@@ -268,7 +268,7 @@ details p{margin-top:8px;color:var(--muted)}
         <li class="plus">Stała cena 16 zł, bez względu na frekwencję.</li>
         <li class="plus">Bez deklaracji na cały rok, wystarczy 160 zł na raz.</li>
         <li class="plus">Pieniądze wpływają z góry, więc Krzysiek nie kredytuje.</li>
-        <li class="minus">Kto gra w każdy piątek, zapłaci więcej niż w opcji B: ok. 750 zł zamiast ok. 470 zł za rok.</li>
+        <li class="minus">Kto gra w każdy piątek, zapłaci więcej niż w opcji B: ok. 830 zł zamiast ok. 520 zł za rok.</li>
         <li class="minus">Ktoś musi pilnować, ile kto ma wejść.</li>
         <li class="minus">Seria słabych piątków może opróżnić skarbonkę.</li>
         <li class="minus">Nikt nie ma pierwszeństwa.</li>
@@ -291,7 +291,7 @@ details p{margin-top:8px;color:var(--muted)}
         <li>pewne miejsce w każdy piątek</li>
         <li>łatwo wejść i wyjść w trakcie roku</li>
       </ul>
-      <p class="net">Realnie po zwrotach: <b class="num" id="sqn">118 zł</b> za kwartał, czyli ok. <b class="num" id="syn">470 zł</b> za rok</p>
+      <p class="net">Realnie po zwrotach: <b class="num" id="sqn">130 zł</b> za kwartał, czyli ok. <b class="num" id="syn">520 zł</b> za rok</p>
     </div>
     <div class="sub guest">
       <span class="who2">Gościnni</span>
@@ -315,13 +315,13 @@ details p{margin-top:8px;color:var(--muted)}
     <div class="ctrls">
       <div class="ctrl"><label for="core">Osób w trzonie: <span class="val num" id="coreV">8</span></label><input type="range" id="core" min="5" max="12" value="8"></div>
       <div class="ctrl"><label for="drop">Gościnnych na piątek: <span class="val num" id="dropV">4</span></label><input type="range" id="drop" min="0" max="8" value="4"></div>
-      <div class="ctrl"><label for="played">Granych piątków w roku: <span class="val num" id="playedV">47</span></label><input type="range" id="played" min="36" max="52" value="47"></div>
+      <div class="ctrl"><label for="played">Granych piątków w roku: <span class="val num" id="playedV">52</span></label><input type="range" id="played" min="36" max="52" value="52"></div>
     </div>
     <div class="pot" id="pot" aria-live="polite"></div>
     <div class="bigline">
-      <div class="tile"><b class="num" id="tNet">470 zł</b><span>płaci rocznie 1 osoba z trzonu</span></div>
+      <div class="tile"><b class="num" id="tNet">520 zł</b><span>płaci rocznie 1 osoba z trzonu</span></div>
       <div class="tile"><b class="num" id="tGame">10 zł</b><span>za grę, jeśli grasz w każdy piątek</span></div>
-      <div class="tile"><b class="num" id="tWorst">940 zł</b><span>najgorzej, gdy nie ma gościnnych</span></div>
+      <div class="tile"><b class="num" id="tWorst">1 040 zł</b><span>najgorzej, gdy nie ma gościnnych</span></div>
     </div>
   </div>
 </section>
@@ -381,7 +381,7 @@ details p{margin-top:8px;color:var(--muted)}
 
 <footer class="foot">
   <p><b>Głosujemy w ankiecie na grupie WhatsApp.</b> Ta strona tylko wyjaśnia opcje.</p>
-  <p>Wyliczenia są szacunkowe: 52 piątki w roku, z czego ok. 47 granych, średnio 10,5 osoby na grę (dane z czerwca–października 2026). W kroku 3 możesz zmienić te założenia suwakami.</p>
+  <p>Wyliczenia są szacunkowe: wszystkie 52 piątki w roku (część może wypaść, gdy hala jest zajęta), średnio 10,5 osoby na grę (dane z czerwca–października 2026). W kroku 3 możesz zmienić te założenia suwakami.</p>
 </footer>
 
 </div>
@@ -395,7 +395,7 @@ details p{margin-top:8px;color:var(--muted)}
   const zl0 = n => fmt(Math.round(n), 0) + ' zł';
 
   // ---- Trzon pot: core prepays all 52 Fridays, drop-ins add 20 zł each, invoices are only for played Fridays; the rest goes back to the core.
-  let trzonNet = 470;
+  let trzonNet = 520;
   function pot(){
     const c = +$('core').value, g = +$('played').value;
     $('drop').max = String(14 - c);           // the court fits ~14 people
