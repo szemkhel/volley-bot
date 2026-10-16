@@ -104,7 +104,7 @@ input[type=range]{width:100%;accent-color:var(--b);height:30px}
 .p.bad{color:var(--warn)}
 
 /* subscription */
-.subs{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
+.subs{display:grid;grid-template-columns:minmax(0,1fr);gap:14px;max-width:520px}
 .sub{border:2px solid var(--line);border-radius:16px;padding:16px;display:flex;flex-direction:column;gap:8px;background:var(--panel);min-width:0;position:relative}
 .sub.feat{border-color:var(--b)}
 .sub .tag{position:absolute;top:-12px;left:14px;background:var(--b);color:#fff;font-family:var(--display);font-weight:800;font-size:12px;letter-spacing:.08em;text-transform:uppercase;padding:3px 10px;border-radius:999px}
@@ -225,7 +225,6 @@ details p{margin-top:8px;color:var(--muted)}
     <article class="opt k-b">
       <h3>B · Trzon (subskrypcja)</h3>
       <div class="big num">260 zł <small>/ kwartał</small></div>
-      <p class="who" style="border:0;padding:0">albo <b>1 040 zł / rok</b> jednym przelewem</p>
       <p class="pergame" style="margin:0"><b style="color:var(--b)">W trzonie ok. 10–13 zł za grę</b> (po zwrotach) · poza trzonem 20 zł za grę</p>
       <ul class="how">
         <li>Ok. 8 osób z góry (trzon) opłaca wszystkie piątki.</li>
@@ -236,7 +235,7 @@ details p{margin-top:8px;color:var(--muted)}
         <li class="plus">Hala opłacona z góry, nikt nie kredytuje faktury.</li>
         <li class="plus">Pewne miejsce w każdy piątek.</li>
         <li class="plus">Przy 8 opłaconych osobach we wtorek nie ma czego liczyć: gramy.</li>
-        <li class="minus">Trzeba zapłacić z góry 260 zł albo 1 040 zł.</li>
+        <li class="minus">Trzeba co kwartał zapłacić z góry 260 zł.</li>
         <li class="minus">Gdy często opuszczasz piątki, przepłacasz.</li>
         <li class="minus">Trzeba znaleźć min. 6–8 chętnych.</li>
         <li class="minus">Zwroty trzeba liczyć co kwartał.</li>
@@ -267,7 +266,7 @@ details p{margin-top:8px;color:var(--muted)}
 <section aria-labelledby="trzon">
   <div class="eyebrow">Krok 3 · trzon od środka</div>
   <h2 id="trzon">Trzon jako subskrypcja</h2>
-  <p>Płacisz jak za abonament: raz na rok albo co kwartał. Pod spodem widać, skąd bierze się kasa trzonu i ile z niej wraca.</p>
+  <p>Płacisz jak za abonament, co kwartał. Pod spodem widać, skąd bierze się kasa trzonu i ile z niej wraca.</p>
   <div class="subs">
     <div class="sub">
       <span class="price num" id="sq">260 zł <small>/ kwartał</small></span>
@@ -276,17 +275,7 @@ details p{margin-top:8px;color:var(--muted)}
         <li>zwrot co kwartał</li>
         <li>łatwo wejść i wyjść w trakcie roku</li>
       </ul>
-      <p class="net">Realnie po zwrotach: <b class="num" id="sqn">118 zł</b> za kwartał</p>
-    </div>
-    <div class="sub feat">
-      <span class="tag">Jeden przelew</span>
-      <span class="price num" id="sy">1 040 zł <small>/ rok</small></span>
-      <ul>
-        <li>1 przelew na cały rok</li>
-        <li>zwrot na koniec roku</li>
-        <li>zero pilnowania terminów wpłat</li>
-      </ul>
-      <p class="net">Realnie po zwrocie: <b class="num" id="syn">470 zł</b> za rok</p>
+      <p class="net">Realnie po zwrotach: <b class="num" id="sqn">118 zł</b> za kwartał, czyli ok. <b class="num" id="syn">470 zł</b> za rok</p>
     </div>
   </div>
   <div class="sim">
@@ -349,7 +338,7 @@ details p{margin-top:8px;color:var(--muted)}
   <h2 id="pytania">Najczęstsze pytania</h2>
   <div class="faq">
     <details><summary>Czy umowa coś nas kosztuje, jeśli odwołamy?</summary><p>Nie. Odwołanie do środy rano jest darmowe, a faktura przychodzi raz w miesiącu tylko za piątki, które się odbyły. Ryzyko to 160 zł za jeden piątek, którego nie zdążymy odwołać.</p></details>
-    <details><summary>Trzon: skąd biorą się zwroty?</summary><p>Trzon wpłaca z góry tyle, ile kosztowałyby wszystkie 52 piątki. Do tej kasy wpadają też wejścia po 20 zł. Po opłaceniu faktur nadwyżka (odwołane piątki plus wejścia) wraca do trzonu po równo.</p></details>
+    <details><summary>Trzon: skąd biorą się zwroty?</summary><p>Trzon wpłaca co kwartał z góry tyle, ile kosztowałyby wszystkie piątki w kwartale (13 × 160 zł). Do tej kasy wpadają też wejścia po 20 zł. Po opłaceniu faktur nadwyżka (odwołane piątki plus wejścia) wraca do trzonu po równo.</p></details>
     <details><summary>Trzon: a jak nie przyjdę?</summary><p>Twoje miejsce i tak jest opłacone, więc nic nie dopłacasz. Trzon opłaca się, gdy grasz regularnie, mniej więcej od 2–3 razy w miesiącu.</p></details>
     <details><summary>Trzon: czy mogę dołączyć albo odejść w trakcie roku?</summary><p>Tak. Dołączając płacisz za kwartały, które zostały. Odchodząc dostajesz zwrot za niewykorzystaną część.</p></details>
     <details><summary>Karnet: co jeśli nie wykorzystam wejść?</summary><p>Karnet jest ważny do końca roku umowy. Pieniądze, które zostaną w skarbonce na koniec roku, idą na kolejny rok (albo na piłki).</p></details>
@@ -392,7 +381,6 @@ details p{margin-top:8px;color:var(--muted)}
       `<div class="bt"><div class="bf" style="background:${r.col};left:${(r.from/max*100).toFixed(1)}%;width:${(Math.abs(r.v)/max*100).toFixed(1)}%"></div></div>`+
       `<span class="v num">${r.v<0?'−':(r.sum?'':'+')}${zl0(Math.abs(r.v))}</span></div>`).join('');
     $('sq').innerHTML = `${zl0(perHead/4)} <small>/ kwartał</small>`;
-    $('sy').innerHTML = `${zl0(perHead)} <small>/ rok</small>`;
     $('sqn').textContent = zl0(trzonNet/4);
     $('syn').textContent = zl0(trzonNet);
     $('tNet').textContent = zl0(trzonNet);
