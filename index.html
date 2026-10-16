@@ -47,7 +47,8 @@ section{display:flex;flex-direction:column;gap:18px}
 .num{font-variant-numeric:tabular-nums}
 
 .hero{display:flex;flex-direction:column;gap:14px}
-.ball{width:64px;height:64px;animation:spin 9s linear infinite}
+.brand{display:flex;align-items:center;gap:14px}
+.ball{flex:none;width:64px;height:64px;animation:spin 9s linear infinite}
 @keyframes spin{to{transform:rotate(360deg)}}
 
 .facts{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}
@@ -196,6 +197,7 @@ details p{margin-top:8px;color:var(--muted)}
 <div class="wrap">
 
 <header class="hero">
+  <div class="brand">
   <svg class="ball" viewBox="0 0 24 24" aria-hidden="true">
     <circle cx="12" cy="12" r="10.8" fill="#f5c400" stroke="#1f4fa0" stroke-width="1.1"/>
     <g fill="none" stroke="#1f4fa0" stroke-width="1.1" stroke-linecap="round">
@@ -205,6 +207,7 @@ details p{margin-top:8px;color:var(--muted)}
     </g>
   </svg>
   <div class="eyebrow">Rajszew team 🏐 · piątki 20:30–22:30</div>
+  </div>
   <h1>Jak płacimy za halę?</h1>
   <p class="lead">Są trzy sposoby rozliczania i wybieramy jeden na cały rok umowy. Poniżej każdy z plusami i minusami, a suwaki pokażą, ile zapłacisz Ty.</p>
 </header>
