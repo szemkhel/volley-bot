@@ -287,7 +287,7 @@ details p{margin-top:8px;color:var(--muted)}
         <li class="minus">Żeby zagrać choć raz, trzeba kupić cały karnet (160 zł).</li>
         <li class="minus">Ktoś musi pilnować, ile kto ma wejść.</li>
         <li class="minus">Seria słabych piątków może opróżnić skarbonkę.</li>
-        <li class="minus">Skarbonki nie da się po roku uczciwie rozdzielić, trzeba z góry ustalić, co z nią zrobimy.</li>
+        <li class="minus">Skarbonki nie da się po roku uczciwie oddać ani przenieść na kolejny rok, więc idzie na sprzęt.</li>
         <li class="minus">Nikt nie ma pierwszeństwa.</li>
       </ul>
       <p class="who">Np. przy 12 osobach wejścia 2 osób (32 zł) idą do <b>skarbonki</b>, a w słaby piątek skarbonka pokrywa brakującą kwotę.</p>
@@ -389,7 +389,7 @@ details p{margin-top:8px;color:var(--muted)}
       <div class="tile" style="--b:var(--c)"><b class="num" id="kWeak">−32 zł</b><span>dopłaca skarbonka, gdy przyjdzie tylko 8 osób</span></div>
     </div>
   </div>
-  <p class="note"><b>Do ustalenia przed startem: co ze skarbonką po roku?</b> Nadwyżka bierze się z wejść różnych osób w różne piątki, więc nie da się jej po roku uczciwie oddać po równo. Musimy wspólnie zdecydować, co z nią zrobimy, np. przenosimy ją na kolejny rok, kupujemy piłki albo robimy wspólne wyjście.</p>
+  <p class="note"><b>Co ze skarbonką po roku?</b> Nadwyżka bierze się z wejść różnych osób w różne piątki, więc nie da się jej po roku uczciwie oddać po równo. Przeniesienie jej na kolejny rok też nie byłoby fair, bo w nowym roku grają częściowo inne osoby. Dlatego to, co zostanie, idzie na <b>sprzęt dla wszystkich</b>: piłki, sprzęt treningowy albo sprzęt do gry na dworze.</p>
 </section>
 
 <section aria-labelledby="piatek">
@@ -440,7 +440,7 @@ details p{margin-top:8px;color:var(--muted)}
     <details><summary>Trzon: skąd biorą się zwroty?</summary><p>Trzon wpłaca co kwartał z góry tyle, ile kosztowałyby wszystkie piątki w kwartale (13 × 160 zł). Do tej kasy trafiają też wejścia gościnnych po 20 zł. Po opłaceniu faktur nadwyżka (odwołane piątki plus wejścia) wraca do trzonu po równo.</p></details>
     <details><summary>Trzon: a jak nie przyjdę?</summary><p>Twoje miejsce i tak jest opłacone, więc nic nie dopłacasz. Trzon opłaca się, gdy grasz regularnie, mniej więcej od 2–3 razy w miesiącu.</p></details>
     <details><summary>Trzon: czy mogę dołączyć albo odejść w trakcie roku?</summary><p>Tak, co kwartał. Przed początkiem każdego kwartału robimy ankietę, kto wchodzi do trzonu. Możesz dołączyć od następnego kwartału albo z niego nie przedłużać.</p></details>
-    <details><summary>Karnet: co jeśli nie wykorzystam wejść?</summary><p>Karnet jest ważny do końca roku umowy. Tego, co zostanie w skarbonce, nie da się po roku uczciwie rozdzielić między osoby. Dlatego przed startem musimy zdecydować, na co pójdą te pieniądze (np. kolejny rok, piłki, wspólne wyjście).</p></details>
+    <details><summary>Karnet: co jeśli nie wykorzystam wejść?</summary><p>Karnet jest ważny do końca roku umowy. Tego, co zostanie w skarbonce, nie da się po roku uczciwie rozdzielić między osoby. Nie przechodzi też na kolejny rok, tylko idzie na sprzęt dla wszystkich: piłki, sprzęt treningowy albo sprzęt do gry na dworze.</p></details>
     <details><summary>Co się nie zmienia w żadnym modelu?</summary><p>Głosujemy w ankiecie <b>do wtorku do końca dnia</b>. Bez głosów nie wiemy, czy gramy, i to jest największy problem, niezależnie od sposobu płacenia.</p></details>
   </div>
 </section>
@@ -568,7 +568,7 @@ details p{margin-top:8px;color:var(--muted)}
     const rows = [
       {l:'Wejścia z karnetów', s:`${g} piątków × ${n} os. × 16 zł`, v:fromK, from:0, col:'var(--c-fill)'},
       {l:'Faktury za halę', s:`${g} piątków × 160 zł`, v:-bills, from:fromK-bills, col:'var(--warn)'},
-      {l: left >= 0 ? 'Zostaje w skarbonce' : 'Brakuje w skarbonce', s: left >= 0 ? 'na słabsze piątki, a po roku do decyzji' : 'trzeba dopłacić albo podnieść cenę', v:left, from: left >= 0 ? 0 : 0, col: left >= 0 ? 'var(--ok)' : 'var(--warn)', sum:true},
+      {l: left >= 0 ? 'Zostaje w skarbonce' : 'Brakuje w skarbonce', s: left >= 0 ? 'na słabsze piątki, a po roku na sprzęt' : 'trzeba dopłacić albo podnieść cenę', v:left, from: left >= 0 ? 0 : 0, col: left >= 0 ? 'var(--ok)' : 'var(--warn)', sum:true},
     ];
     $('kPot').innerHTML = rows.map(r =>
       `<div class="prow${r.sum?' sum':''}"><span class="l">${r.l}<small>${r.s}</small></span>`+
