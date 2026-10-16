@@ -298,6 +298,27 @@ function nextDateForDay(dayName, now) {
   return base.toISOString().slice(0, 10);
 }
 
+// Date of the game a NEWLY POSTED poll is for. Unlike nextDateForDay, today never counts: on
+// 2026-10-16 (a Friday) Krzysztof posted next Friday's poll in the afternoon and the bot filed it
+// under that same evening. With the vote closing days before the game, nobody opens a poll for a
+// game a few hours away, so a poll posted on its own weekday is next week's.
+function newPollGameDate(dayName, now) {
+  const d = nextDateForDay(dayName, now);
+  if (!d) return null;
+  const today = (now || new Date()).toLocaleDateString("en-CA", { timeZone: "Europe/Warsaw" });
+  if (d !== today) return d;
+  const next = new Date(d + "T12:00:00Z");
+  next.setUTCDate(next.getUTCDate() + 7);
+  return next.toISOString().slice(0, 10);
+}
+
+// Tracked polls a new poll for `day`/`gameDate` replaces: a re-post of the SAME game only. Matching
+// on weekday alone made next Friday's poll silently drop tonight's (votes and all), which can then
+// never be settled.
+function pollsReplacedBy(polls, day, gameDate) {
+  return (polls || []).filter(p => p.gameDay === day && (!p.gameDate || !gameDate || p.gameDate === gameDate));
+}
+
 // Authorization: owner (fromMe) always; otherwise must match owner LID or be in admins list
 function isAdmin(senderPhone, isFromMe, admins, ownerLidPhone) {
   if (isFromMe) return true;
@@ -677,7 +698,7 @@ function isDroppedConnection(err) {
 }
 
 module.exports = { DAY_WORDS, attendanceFromTally, weightOfOptions, confirmedPlayers, squadIsFull, reminderSkipAt, parseAnkieta, formatPln, pollName, settlementCost, parseRozliczArgs, pickSettlementPoll, pollHasStarted, nextDateForDay,
-reminderSlots, cronForSlot, votingDeadline, autoPollAllowed, lastCallDays, rollCallSlot, rollCallMessage,
+reminderSlots, cronForSlot, votingDeadline, autoPollAllowed, newPollGameDate, pollsReplacedBy, lastCallDays, rollCallSlot, rollCallMessage,
 DEFAULT_REMINDER_SLOTS, DAY_NAMES_PL_GEN, isAdmin, settlementPeople, matchPoll, parseAbsenceDays, activeInjuryLids, reconnectDelay, healthReport, mergeGameRows, hasBannedVenueWord, votersChoosing, attendanceCounts, pickTopByAttendance, daysUntil,
 parseSettlementShorthand, pollBeatsHistory, looksLikeFullSurname, suggestedInitialName, newAttendeesFromMentions, extraMvpCandidates,
 nextAvatarMeta, topTiedEntries, mvpWinCount, looksLikeOwnerCommand, looksLikeGameResponse,

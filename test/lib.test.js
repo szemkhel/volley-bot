@@ -3,7 +3,7 @@ const assert = require("node:assert");
 const os = require("os");
 const fs = require("fs");
 const path = require("path");
-const { attendanceFromTally, weightOfOptions, confirmedPlayers, squadIsFull, reminderSkipAt, parseAnkieta, formatPln, pollName, settlementCost, parseRozliczArgs, pickSettlementPoll, pollHasStarted, nextDateForDay, isAdmin, settlementPeople, matchPoll, parseAbsenceDays, activeInjuryLids, reconnectDelay, healthReport, mergeGameRows, hasBannedVenueWord, votersChoosing, attendanceCounts, pickTopByAttendance, daysUntil,
+const { attendanceFromTally, weightOfOptions, confirmedPlayers, squadIsFull, reminderSkipAt, parseAnkieta, formatPln, pollName, settlementCost, parseRozliczArgs, pickSettlementPoll, pollHasStarted, nextDateForDay, newPollGameDate, pollsReplacedBy, isAdmin, settlementPeople, matchPoll, parseAbsenceDays, activeInjuryLids, reconnectDelay, healthReport, mergeGameRows, hasBannedVenueWord, votersChoosing, attendanceCounts, pickTopByAttendance, daysUntil,
   parseSettlementShorthand, pollBeatsHistory, looksLikeFullSurname, suggestedInitialName, newAttendeesFromMentions, extraMvpCandidates,
   nextAvatarMeta, topTiedEntries, mvpWinCount, looksLikeOwnerCommand, looksLikeGameResponse,
   authStateSnapshot, authStateDiffEvents, reminderSlots, cronForSlot, votingDeadline, autoPollAllowed, lastCallDays,
@@ -371,6 +371,34 @@ test("nextDateForDay: wraps to next week", () => {
 
 test("nextDateForDay: invalid day -> null", () => {
   assert.strictEqual(nextDateForDay("nonsense", new Date("2026-06-15T10:00:00Z")), null);
+});
+
+test("newPollGameDate: a poll posted on its own weekday is next week's (2026-10-16 regression)", () => {
+  // Friday 2026-10-16, 15:00 Warsaw: Krzysztof's "piątek 20:30" poll is for 2026-10-23
+  assert.strictEqual(newPollGameDate("friday", new Date("2026-10-16T13:00:00Z")), "2026-10-23");
+});
+
+test("newPollGameDate: other days behave like nextDateForDay", () => {
+  // Monday 2026-10-19 → Friday 2026-10-23; Saturday 2026-10-17 → Friday 2026-10-23
+  assert.strictEqual(newPollGameDate("friday", new Date("2026-10-19T08:00:00Z")), "2026-10-23");
+  assert.strictEqual(newPollGameDate("friday", new Date("2026-10-17T08:00:00Z")), "2026-10-23");
+  assert.strictEqual(newPollGameDate("nonsense", new Date("2026-10-19T08:00:00Z")), null);
+});
+
+test("newPollGameDate: uses the Warsaw date, not UTC", () => {
+  // 23:30 UTC Thursday 2026-10-15 is already Friday 01:30 in Warsaw → next week's Friday
+  assert.strictEqual(newPollGameDate("friday", new Date("2026-10-15T23:30:00Z")), "2026-10-23");
+});
+
+test("pollsReplacedBy: only a re-post of the same game is replaced", () => {
+  const tonight = { gameDay: "friday", gameDate: "2026-10-16" };
+  const nextWeek = { gameDay: "friday", gameDate: "2026-10-23" };
+  const legacy = { gameDay: "friday" };
+  const saturday = { gameDay: "saturday", gameDate: "2026-10-24" };
+  const polls = [tonight, nextWeek, legacy, saturday];
+  assert.deepStrictEqual(pollsReplacedBy(polls, "friday", "2026-10-23"), [nextWeek, legacy]);
+  assert.deepStrictEqual(pollsReplacedBy(polls, "friday", null), [tonight, nextWeek, legacy]);
+  assert.deepStrictEqual(pollsReplacedBy(null, "friday", "2026-10-23"), []);
 });
 
 test("isAdmin: owner (fromMe) always allowed", () => {

@@ -1,5 +1,13 @@
 [
   {
+    "version": "v1.40",
+    "date": "16 października 2026",
+    "notes": [
+      "Ankieta wystawiona w dniu gry dotyczy przyszłego tygodnia. Ankieta na „piątek 20:30” założona w piątek po południu była przypisywana do tego samego wieczoru, więc bot uznałby ją za zagraną, a w poniedziałek wystawił drugą ankietę na ten sam piątek.",
+      "Nowa ankieta zastępuje tylko poprzednią ankietę na ten sam termin. Wcześniej ankieta na przyszły piątek usuwała z pamięci bota ankietę na najbliższy piątek, razem z głosami."
+    ]
+  },
+  {
     "version": "v1.39",
     "date": "15 października 2026",
     "notes": [
