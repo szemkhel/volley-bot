@@ -484,7 +484,7 @@ details p{margin-top:8px;color:var(--muted)}
       {k:'color-mix(in srgb,var(--b) 40%,var(--bg))', l:'B · Gościnni', s:'20 zł za grę', v: g*SINGLE},
       {k:'var(--c-fill)', l:'C · Karnet', s:'16 zł za wejście', v: g*KARNET},
     ];
-    const max = Math.max(...rows.map(r=>r.v), 1), min = Math.min(...rows.map(r=>r.v));
+    const max = Math.max(...rows.map(r=>r.v), 1), min = Math.min(...rows.filter(r=>!r.old).map(r=>r.v));   // option A is shown for comparison only, never starred
     $('bars').innerHTML = rows.map(r =>
       `<div class="bar${r.v===min?' best':''}${r.old?' was':''}"><span class="l">${r.l}<small>${r.s}</small>${r.old?`<span class="old">${r.old}</span>`:''}</span>`+
       `<div class="track"><div class="fill" style="--k:${r.k}" data-w="${(r.v/max*100).toFixed(1)}"></div></div>`+
