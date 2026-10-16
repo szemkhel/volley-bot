@@ -424,7 +424,7 @@ details p{margin-top:8px;color:var(--muted)}
     $('tWorst').textContent = zl0(bills / c);
     $('cmpBody').innerHTML = [[1,'1 raz w miesiącu'],[2,'2 razy w miesiącu'],[3,'3 razy w miesiącu'],[4,'w każdy piątek']].map(([m,l]) => {
       const n = Math.round(g*m/4), t = trzonNet, s = n*SINGLE;
-      return `<tr><td>${l} <small>(${n} gier w roku)</small></td><td class="${t<=s?'win':''}">${zl0(t)} <small>(${zl0(t/n)} za grę)</small></td><td class="${s<t?'win':''}">${zl0(s)} <small>(20 zł za grę)</small></td></tr>`;
+      return `<tr><td>${l} <small>(${n} gier w roku)</small></td><td class="${t<=s?'win':''}">${zl0(t)} rocznie <small>(${zl0(t/n)} za grę)</small></td><td class="${s<t?'win':''}">${zl0(s)} rocznie <small>(20 zł za grę)</small></td></tr>`;
     }).join('');
     year(curM);
   }
