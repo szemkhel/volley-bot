@@ -22,10 +22,11 @@ jobs:
       - name: Syntax check all JS
         run: for f in *.js; do node --check "$f"; done
       - name: Run unit tests
-        # `node --test` exits 0 when it finds no test files, and skipped or todo tests don't fail
-        # it either, so check the summary as well as the exit code.
+        # `npm test` stops at the first failing test (scripts/bail-reporter.mjs). `node --test`
+        # exits 0 when it finds no test files, and skipped or todo tests don't fail it either, so
+        # check the summary as well as the exit code.
         run: |
-          npm test -- --test-reporter=tap | tee test.tap
-          grep -qE '^# tests [1-9]' test.tap || { echo "::error::no tests ran"; exit 1; }
-          grep -qx '# skipped 0' test.tap && grep -qx '# todo 0' test.tap \
+          npm test 2>&1 | tee test.log
+          grep -qE '^ℹ tests [1-9]' test.log || { echo "::error::no tests ran"; exit 1; }
+          grep -qx 'ℹ skipped 0' test.log && grep -qx 'ℹ todo 0' test.log \
             || { echo "::error::skipped or todo tests are not allowed"; exit 1; }
