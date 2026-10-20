@@ -5,6 +5,12 @@ on:
   push:
     branches: [main]
 
+# The default `run` shell is `bash -e` without pipefail, so `a | b` passes when `a` fails.
+# Naming the shell switches GitHub to `bash -eo pipefail`.
+defaults:
+  run:
+    shell: bash
+
 jobs:
   test:
     runs-on: ubuntu-latest
@@ -16,4 +22,10 @@ jobs:
       - name: Syntax check all JS
         run: for f in *.js; do node --check "$f"; done
       - name: Run unit tests
-        run: npm test
+        # `node --test` exits 0 when it finds no test files, and skipped or todo tests don't fail
+        # it either, so check the summary as well as the exit code.
+        run: |
+          npm test -- --test-reporter=tap | tee test.tap
+          grep -qE '^# tests [1-9]' test.tap || { echo "::error::no tests ran"; exit 1; }
+          grep -qx '# skipped 0' test.tap && grep -qx '# todo 0' test.tap \
+            || { echo "::error::skipped or todo tests are not allowed"; exit 1; }

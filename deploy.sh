@@ -10,7 +10,10 @@ echo "$(date '+%F %T') deploying $REMOTE"
 NEEDNPM=0
 git diff --quiet HEAD origin/main -- package-lock.json package.json || NEEDNPM=1
 git reset --hard -q origin/main
-[ "$NEEDNPM" = "1" ] && npm ci --omit=dev --silent
+# A failed install must count as a failed validation: the tests only need node builtins, so
+# they would pass and the bot would restart on a broken node_modules.
+INSTALL_OK=1
+if [ "$NEEDNPM" = "1" ]; then npm ci --omit=dev --silent || INSTALL_OK=0; fi
 
 # Guardrail: syntax-check every file + run unit tests before restarting the bot.
 validate() {
@@ -30,7 +33,7 @@ harden_auth() {
   [ -f auth_baseline.json ] && chmod 600 auth_baseline.json
 }
 
-if validate; then
+if [ "$INSTALL_OK" = "1" ] && validate; then
   harden_auth
   systemctl restart whatsapp-agent
   echo "$(date '+%F %T') deployed + restarted ($REMOTE)"
