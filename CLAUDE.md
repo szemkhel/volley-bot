@@ -26,7 +26,7 @@ Auth lives in `auth_info/` on the container — **never delete it**, it would fo
 
 ```bash
 npm run check    # node --check on index/reminder/scheduler/notify/lib
-npm test         # node --test — 148 tests, all must pass (auto-discovers test/; do NOT pass test/ as an arg on Node 22)
+npm test         # node --test — 129 tests, all must pass (auto-discovers test/; do NOT pass test/ as an arg on Node 22)
 ```
 
 Both must be green before pushing. CI (`.github/workflows/ci.yml`, job `test`) runs the same.
@@ -70,12 +70,6 @@ Both must be green before pushing. CI (`.github/workflows/ci.yml`, job `test`) r
   runs once per poll, so a lost picture is recovered by the hidden self-chat trigger `karykatura`
   (redraws the latest winner). Covered by `test/mvpCaricature.test.js` against a local server that
   really drops the connection.
-- `zgrajkaLogin.js` — `bot zaloguj` (ZGR-14): asks zgrajka.com for a one-time sign-in link with
-  an Ed25519-signed request (key in `.env` `ZGRAJKA_BOT_SIGNING_KEY`, LID only, never a phone
-  number), reacts ✅ in the group and DMs the link to the requester's own chat only. Private
-  `zaloguj` works only for group participants. Off until `config.json` `zgrajka.enabled`; not in
-  `pomoc`/README/`releases.json` until the release that switches it on. Covered by
-  `test/zgrajkaLogin.test.js` (fake socket + local stub of the service that checks signatures).
 - `find-group.js`, `create-test-group.js`, `trigger.js` — one-shot helpers.
 - `releases.json` — user-facing changelog in Polish, newest first; feeds `bot zmiany`. Currently **v1.40**.
 

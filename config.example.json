@@ -20,6 +20,5 @@
   "optimumPlayers": 12,
   "reminderSkipAt": 12,
   "finalizeGraceDays": 3,
-  "statsUrl": "",
-  "zgrajka": { "enabled": false, "url": "https://zgrajka.com", "connectionId": "" }
+  "statsUrl": ""
 }

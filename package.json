@@ -5,7 +5,7 @@
   "main": "index.js",
   "scripts": {
     "test": "node --test --test-reporter=spec --test-reporter-destination=stdout --test-reporter=./scripts/bail-reporter.mjs --test-reporter-destination=stderr",
-    "check": "node --check index.js && node --check reminder.js && node --check scheduler.js && node --check notify.js && node --check lib.js && node --check zgrajkaLogin.js"
+    "check": "node --check index.js && node --check reminder.js && node --check scheduler.js && node --check notify.js && node --check lib.js"
   },
   "keywords": [],
   "author": "",
