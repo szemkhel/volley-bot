@@ -7,11 +7,13 @@ const path = require("path");
 const cron = require("node-cron");
 const http = require("http");
 const { notify } = require("./notify");
+const { createZgrajkaLogin } = require("./zgrajkaLogin");
 const { DAY_WORDS, attendanceFromTally, weightOfOptions, confirmedPlayers, squadIsFull, reminderSkipAt, parseAnkieta, formatPln, pollName, settlementCost, parseRozliczArgs, pickSettlementPoll, pollHasStarted, nextDateForDay, isAdmin,
   reminderSlots, rollCallSlot, votingDeadline, lastCallDays, settlementPeople, matchPoll, parseAbsenceDays, activeInjuryLids, reconnectDelay, healthReport, mergeGameRows, attendanceCounts, pickTopByAttendance, daysUntil,
   pollBeatsHistory, looksLikeFullSurname, suggestedInitialName, newAttendeesFromMentions, extraMvpCandidates,
   topTiedEntries, mvpWinCount, looksLikeOwnerCommand, looksLikeGameResponse,
-  authStateSnapshot, authStateDiffEvents, fetchErrorDetail, autoPollAllowed, newPollGameDate, pollsReplacedBy } = require("./lib");
+  authStateSnapshot, authStateDiffEvents, fetchErrorDetail, autoPollAllowed, newPollGameDate, pollsReplacedBy,
+  isZalogujCommand, parseSigningKey } = require("./lib");
 
 const DIR = __dirname;
 const STATE_FILE = path.join(DIR, "state.json");
@@ -126,6 +128,14 @@ let reminderScheduled = false;
 // Always resolve the CURRENT socket: `sock` is reassigned on every reconnect, so cron
 // closures must read it live (not capture a stale, closed socket at schedule time).
 const getSock = () => sock;
+// `bot zaloguj` (ZGR-14), off unless config.json has zgrajka.enabled. The key never leaves .env.
+const zgrajkaLogin = createZgrajkaLogin({
+  getSock,
+  notifyOwner: (text) => notify(sock, loadConfig(), text),
+  signingKey: parseSigningKey(process.env.ZGRAJKA_BOT_SIGNING_KEY),
+  nameOf: (lid) => contacts[lid],
+  selfChatJid: (cfg) => process.env.NOTIFY_JID || cfg.notifyJid,
+});
 let connDownAt = null;
 
 // Liveness reported by GET /health to the external monitor. Deliberately derived from the
@@ -1703,7 +1713,11 @@ async function connectToWhatsApp() {
           const mentioned = msg.message.extendedTextMessage?.contextInfo?.mentionedJid || [];
           const sJid = msg.key.participant || msg.key.remoteJid;
           const sPhone = sJid ? sJid.split("@")[0] : "";
-          await handleGroupCommand(gtext.trim().replace(/^bot\b[\s,:]*/i, ""), cfg, mentioned, sPhone, !!msg.key.fromMe);
+          const rest = gtext.trim().replace(/^bot\b[\s,:]*/i, "");
+          // Before handleGroupCommand: even with the feature off, "zaloguj" must get no reply
+          // (not the AI fallback), and a link never goes to the group.
+          if (isZalogujCommand(rest)) { await zgrajkaLogin.onGroupCommand(msg, cfg); continue; }
+          await handleGroupCommand(rest, cfg, mentioned, sPhone, !!msg.key.fromMe);
           continue;
         }
       }
@@ -1757,12 +1771,24 @@ async function connectToWhatsApp() {
       if (type !== "notify") continue;
       if (msg.key.fromMe) continue;
 
+
       const senderJid = msg.key.participant || msg.key.remoteJid;
       if (senderJid && msg.pushName) {
         const phone = senderJid.split("@")[0];
         if (!contacts[phone]) {
           contacts[phone] = msg.pushName;
           saveContacts(contacts);
+        }
+      }
+
+      // "zaloguj" in a private chat with the bot's number (ZGR-14). Everything else people write
+      // to the owner privately is left alone.
+      const rjid = msg.key.remoteJid || "";
+      if (!rjid.endsWith("@g.us") && !rjid.endsWith("@broadcast") && !rjid.endsWith("@newsletter")) {
+        const ptext = msg.message.conversation || msg.message.extendedTextMessage?.text;
+        if (ptext && isZalogujCommand(ptext, { privateChat: true })) {
+          if (!seen(msg.key.id)) await zgrajkaLogin.onPrivateMessage(msg, cfg);
+          continue;
         }
       }
 
