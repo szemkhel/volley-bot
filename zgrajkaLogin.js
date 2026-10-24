@@ -23,6 +23,18 @@ const linkText = (url) =>
 const TOO_MANY_TEXT = BOT_TAG + " Za dużo prób logowania. Spróbuj ponownie za godzinę.";
 const DOWN_TEXT = BOT_TAG + " Zgrajka chwilowo nie odpowiada. Spróbuj za kilka minut.";
 
+// The service's origin, or null when the URL isn't https: the request carries a player's LID and
+// name, which must never cross the network in clear text. Plain http only for a local service.
+function serviceOrigin(raw) {
+  try {
+    const u = new URL(raw);
+    const local = u.hostname === "localhost" || u.hostname === "127.0.0.1";
+    return u.protocol === "https:" || (u.protocol === "http:" && local) ? u.origin : null;
+  } catch {
+    return null;
+  }
+}
+
 // getSock: a getter, never the socket itself — Baileys reconnects and replaces it (CLAUDE.md).
 // notifyOwner(text): DM to the owner's self-chat. nameOf(lid): name from contacts.json, if any.
 // selfChatJid(cfg): where the owner's own link goes (the chat notify() writes to).
@@ -77,7 +89,7 @@ function createZgrajkaLogin({
     const z = cfg.zgrajka;
     const once = () => {
       const body = zgrajkaSignInBody({ connectionId: z.connectionId, lid, name, ts: now(), nonce: newNonce() });
-      return fetchImpl(z.url.replace(/\/+$/, "") + "/api/v1/bot/sign-in-links", {
+      return fetchImpl(serviceOrigin(z.url) + "/api/v1/bot/sign-in-links", {
         method: "POST",
         headers: { "content-type": "application/json", "x-zgrajka-signature": signZgrajkaBody(body, signingKey) },
         body,
@@ -104,6 +116,11 @@ function createZgrajkaLogin({
       await alertOwner("włączone, ale brakuje zgrajka.url, zgrajka.connectionId albo klucza ZGRAJKA_BOT_SIGNING_KEY.");
       return;
     }
+    const origin = serviceOrigin(z.url);
+    if (!origin) {
+      await alertOwner("zgrajka.url musi być adresem https (http tylko dla localhost).");
+      return;
+    }
 
     let res = null;
     let failure = null;
@@ -113,14 +130,20 @@ function createZgrajkaLogin({
       failure = e.name === "TimeoutError" ? "brak odpowiedzi w 10 s" : "błąd połączenia (" + (e.cause?.code || e.name) + ")";
     }
 
+    const json = res ? await res.json().catch(() => null) : null;
     if (res && res.status === 201) {
-      const { url } = await res.json();
+      // Only a sign-in link on the configured site ever goes to a player, whatever the answer says.
+      const url = typeof json?.url === "string" && json.url.startsWith(origin + "/w/") ? json.url : null;
+      if (!url) {
+        await alertOwner("Zgrajka zwróciła nieoczekiwaną odpowiedź (201 bez poprawnego linku).");
+        return;
+      }
       lastLinkAt.set(lid, now());
       await react();
       await sock().sendMessage(replyJid, { text: linkText(url) });
       return;
     }
-    const code = res ? await res.json().then((j) => j?.error?.code, () => null) : null;
+    const code = json?.error?.code ?? null;
     if (res && res.status === 429 && code === "player_limit") {
       if (now() - (tooManyAt.get(lid) ?? -Infinity) >= HOUR) {
         tooManyAt.set(lid, now());
@@ -140,10 +163,20 @@ function createZgrajkaLogin({
     }
   }
 
+  // A failed send or a broken socket here must never escape into the messages.upsert handler:
+  // an unhandled rejection would take the whole bot down with it.
+  const guarded = (fn) => async (msg, cfg) => {
+    try {
+      await fn(msg, cfg);
+    } catch (e) {
+      console.error("[zaloguj] failed:", e.name, e.message);
+    }
+  };
+
   return {
     // "bot zaloguj" in the group. The link goes to the sender's own chat; the owner's own
     // command (fromMe) goes to the owner's self-chat. The group itself gets only the ✅.
-    async onGroupCommand(msg, cfg) {
+    onGroupCommand: guarded(async (msg, cfg) => {
       if (!cfg.zgrajka?.enabled) return;
       if (msg.key.fromMe) {
         const lid = lidUserOf(getSock().user?.lid);
@@ -154,16 +187,16 @@ function createZgrajkaLogin({
       const lid = await lidOf(msg.key.participant);
       if (!lid) return;
       await deliver(cfg, lid, msg.pushName, lid + "@lid", msg.key);
-    },
+    }),
 
     // "zaloguj" written to the bot's number privately: answered in that chat, and only for
     // people who are in the group. Anyone else gets silence and no request is made.
-    async onPrivateMessage(msg, cfg) {
+    onPrivateMessage: guarded(async (msg, cfg) => {
       if (!cfg.zgrajka?.enabled || msg.key.fromMe) return;
       const lid = await lidOf(msg.key.remoteJid);
       if (!lid || !(await isParticipant(cfg, lid))) return;
       await deliver(cfg, lid, msg.pushName, msg.key.remoteJid, null);
-    },
+    }),
   };
 }
 

@@ -14,7 +14,8 @@ const STRANGER = "100000000000009";
 const OWNER = "100000000000077";
 const SELF_CHAT = "48500000000@s.whatsapp.net";
 const CONNECTION = "0b6f4c9e-2d1a-4e7b-9c3f-5a8d1e2f3b4c";
-const LINK = "https://zgrajka.test/w/" + "T".repeat(43);
+// "ORIGIN" is replaced by the stub with its own address, so the link is on the configured site.
+const LINK = "ORIGIN/w/" + "T".repeat(43);
 
 const { publicKey, privateKey } = crypto.generateKeyPairSync("ed25519");
 
@@ -30,7 +31,7 @@ function stubService(next) {
       const [status, body] = ok ? next(requests.length) : [401, { error: { code: "unauthorized" } }];
       if (status === "drop") return req.socket.destroy();
       res.writeHead(status, { "content-type": "application/json" });
-      res.end(JSON.stringify(body));
+      res.end(JSON.stringify(body).replaceAll("ORIGIN", "http://127.0.0.1:" + server.address().port));
     });
   });
   return new Promise((resolve) => server.listen(0, "127.0.0.1", () =>
@@ -80,7 +81,7 @@ test("group: one ✅ on the command, one private message to the sender, nothing 
     assert.deepStrictEqual(sock.sent.map((s) => s.jid), [GROUP, PLAYER + "@lid"]);
     assert.deepStrictEqual(sock.sent[0].content, { react: { text: "✅", key: msg.key } });
     const dm = sock.sent[1].content.text;
-    assert.ok(dm.startsWith("🤖SiatkoBot🤖 Twój link do Zgrajki (ważny 10 minut, tylko dla Ciebie):\n" + LINK));
+    assert.ok(dm.startsWith("🤖SiatkoBot🤖 Twój link do Zgrajki (ważny 10 minut, tylko dla Ciebie):\n" + LINK.replace("ORIGIN", svc.url)));
     assert.ok(!sock.sent.some((s) => s.jid === GROUP && "text" in s.content));
     assert.strictEqual(svc.requests.length, 1);
     const r = svc.requests[0];
@@ -232,4 +233,31 @@ test("enabled without a key or URL: silent to the player, one alert to the owner
   await login.onGroupCommand(groupMsg(PLAYER), cfg);
   assert.strictEqual(sock.sent.length, 0);
   assert.strictEqual(notes.length, 1);
+});
+
+test("only https (or a local http service) is ever called", async () => {
+  const { sock, notes, login, cfg } = setup(null);
+  cfg.zgrajka.url = "http://zgrajka.test";
+  await login.onGroupCommand(groupMsg(PLAYER), cfg);
+  assert.strictEqual(sock.sent.length, 0);
+  assert.match(notes[0], /https/);
+});
+
+test("a 201 whose link isn't on the configured site is never sent to the player", async () => {
+  const svc = await stubService(() => [201, { url: "https://evil.example/w/" + "T".repeat(43) }]);
+  try {
+    const { sock, notes, login, cfg } = setup(svc);
+    await login.onGroupCommand(groupMsg(PLAYER), cfg);
+    assert.strictEqual(sock.sent.length, 0);
+    assert.match(notes[0], /nieoczekiwaną/);
+  } finally { svc.close(); }
+});
+
+test("a failing socket never escapes into the message handler", async () => {
+  const svc = await stubService(() => [201, { url: LINK }]);
+  try {
+    const { sock, login, cfg } = setup(svc);
+    sock.sendMessage = async () => { throw new Error("Connection Closed"); };
+    await assert.doesNotReject(login.onGroupCommand(groupMsg(PLAYER), cfg));
+  } finally { svc.close(); }
 });

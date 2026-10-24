@@ -26,7 +26,7 @@ Auth lives in `auth_info/` on the container — **never delete it**, it would fo
 
 ```bash
 npm run check    # node --check on index/reminder/scheduler/notify/lib
-npm test         # node --test — 148 tests, all must pass (auto-discovers test/; do NOT pass test/ as an arg on Node 22)
+npm test         # node --test — 151 tests, all must pass (auto-discovers test/; do NOT pass test/ as an arg on Node 22)
 ```
 
 Both must be green before pushing. CI (`.github/workflows/ci.yml`, job `test`) runs the same.
