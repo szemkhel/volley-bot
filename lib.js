@@ -697,9 +697,62 @@ function isDroppedConnection(err) {
   return /fetch failed|terminated/i.test(err.message || "");
 }
 
+// ── Zgrajka sign-in (`bot zaloguj`, ZGR-14) ──────────────────────────────────────────────────
+// The bot asks zgrajka.com for a one-time sign-in link for a player it saw in the group. The
+// request carries the player's LID (never a phone number) and is signed with the bot's Ed25519
+// key, so the service only ever holds the public half. Contract: zgrajka-service
+// docs/features/ZGR-14-whatsapp-sign-in.md, "Bot API contract".
+
+const ZGRAJKA_SIGNATURE_CONTEXT = "zgrajka-bot-sign-in-v1\n";
+const ZGRAJKA_COOLDOWN_MS = 2 * 60 * 1000;
+
+// `text` is what follows "bot" in the group, or the whole private message (where "bot zaloguj"
+// is accepted too, since people copy what they saw in the group).
+function isZalogujCommand(text, { privateChat = false } = {}) {
+  const t = String(text || "").trim().toLowerCase();
+  return t === "zaloguj" || (privateChat && /^bot[\s,:]+zaloguj$/.test(t));
+}
+
+// The exact bytes that get signed and sent: the service verifies the signature over these bytes,
+// not over a re-serialised object, so the body is built once, here, in a fixed key order.
+function zgrajkaSignInBody({ connectionId, lid, name, ts, nonce }) {
+  const clean = typeof name === "string" ? name.replace(/[\u0000-\u001f\u007f]/g, " ").trim().slice(0, 40) : "";
+  return JSON.stringify({ connectionId, lid: String(lid), name: clean || null, ts, nonce });
+}
+
+// The key arrives from .env as PKCS#8 PEM; a single-line .env value has its newlines escaped.
+function parseSigningKey(value) {
+  if (!value) return null;
+  const pem = String(value).replace(/\\n/g, "\n").trim();
+  try {
+    const key = require("crypto").createPrivateKey(pem);
+    return key.asymmetricKeyType === "ed25519" ? key : null;
+  } catch {
+    return null;
+  }
+}
+
+function signZgrajkaBody(body, privateKey) {
+  return require("crypto").sign(null, Buffer.from(ZGRAJKA_SIGNATURE_CONTEXT + body, "utf8"), privateKey).toString("base64");
+}
+
+// Cooldown per LID: a repeat within 2 minutes gets only the ✅ reaction, no new link. `last` maps
+// LID → ms of the last link sent; returns true when this request should be skipped.
+function zalogujCoolingDown(last, lid, now, ms = ZGRAJKA_COOLDOWN_MS) {
+  const at = last.get(lid);
+  return at !== undefined && now - at < ms;
+}
+
+// LID user-part of a JID, or null when it isn't a LID (a phone JID must never reach the service).
+function lidUserOf(jid) {
+  const m = /^([0-9]{5,24})(?::[0-9]+)?@lid$/.exec(String(jid || ""));
+  return m ? m[1] : null;
+}
+
 module.exports = { DAY_WORDS, attendanceFromTally, weightOfOptions, confirmedPlayers, squadIsFull, reminderSkipAt, parseAnkieta, formatPln, pollName, settlementCost, parseRozliczArgs, pickSettlementPoll, pollHasStarted, nextDateForDay,
 reminderSlots, cronForSlot, votingDeadline, autoPollAllowed, newPollGameDate, pollsReplacedBy, lastCallDays, rollCallSlot, rollCallMessage,
 DEFAULT_REMINDER_SLOTS, DAY_NAMES_PL_GEN, isAdmin, settlementPeople, matchPoll, parseAbsenceDays, activeInjuryLids, reconnectDelay, healthReport, mergeGameRows, hasBannedVenueWord, votersChoosing, attendanceCounts, pickTopByAttendance, daysUntil,
 parseSettlementShorthand, pollBeatsHistory, looksLikeFullSurname, suggestedInitialName, newAttendeesFromMentions, extraMvpCandidates,
 nextAvatarMeta, topTiedEntries, mvpWinCount, looksLikeOwnerCommand, looksLikeGameResponse,
-authStateSnapshot, authStateDiffEvents, fetchErrorDetail, isDroppedConnection };
+authStateSnapshot, authStateDiffEvents, fetchErrorDetail, isDroppedConnection,
+ZGRAJKA_SIGNATURE_CONTEXT, ZGRAJKA_COOLDOWN_MS, isZalogujCommand, zgrajkaSignInBody, parseSigningKey, signZgrajkaBody, zalogujCoolingDown, lidUserOf };
